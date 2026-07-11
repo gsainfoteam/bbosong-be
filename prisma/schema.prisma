@@ -12,3 +12,81 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum ConsentType {
+  TERMS_OF_SERVICE
+  PRIVACY_POLICY
+
+  @@map("consent_type")
+}
+
+enum Role {
+  USER
+
+  @@map("role")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+
+  @@map("gender")
+}
+
+model User {
+  uuid          String    @id @db.Uuid
+  studentHash   String    @unique @map("student_hash")
+  name          String
+  email         String
+  studentNumber String    @map("student_number")
+  role          Role      @default(USER)
+  deletedAt     DateTime? @map("deleted_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  userRefreshTokens UserRefreshToken[]
+  userConsents      UserConsent[]
+  auditLogs         AuditLog[]
+
+  @@map("user")
+}
+
+model UserRefreshToken {
+  uuid         String   @id @default(uuid()) @db.Uuid
+  userUuid     String   @map("user_uuid") @db.Uuid
+  refreshToken String   @unique @map("refresh_token")
+  sessionId    String   @map("session_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  expiredAt    DateTime @map("expired_at")
+
+  user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
+
+  @@index([userUuid, sessionId])
+  @@map("user_refresh_token")
+}
+
+model UserConsent {
+  uuid        String      @id @default(uuid()) @db.Uuid
+  userUuid    String      @map("user_uuid") @db.Uuid
+  consentType ConsentType @map("consent_type")
+  version     String
+  agreedAt    DateTime    @default(now()) @map("agreed_at")
+
+  user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
+
+  @@index([userUuid, consentType])
+  @@map("user_consent")
+}
+
+model AuditLog {
+  uuid        String   @id @default(uuid()) @db.Uuid
+  action      String
+  data        String
+  userUuid    String   @map("user_uuid") @db.Uuid
+  performedAt DateTime @default(now()) @map("performed_at")
+
+  user User @relation(fields: [userUuid], references: [uuid])
+
+  @@index([performedAt])
+  @@map("audit_log")
+}
