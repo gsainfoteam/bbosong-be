@@ -2,16 +2,12 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { StringValue } from 'ms';
-import { InfoteamAccountService } from '@lib/infoteam-account';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
-import {
-  LatestPolicyVersionResponse,
-  LatestPolicyVersions,
-} from './types/consent.type';
+import ms, { StringValue } from 'ms';
 import {
   catchError,
   firstValueFrom,
@@ -21,6 +17,31 @@ import {
   TimeoutError,
 } from 'rxjs';
 import { AxiosError } from 'axios';
+import crypto from 'crypto';
+
+import { InfoteamAccountService } from '@lib/infoteam-account';
+import {
+  DatabaseService,
+  PrismaTransaction,
+  UserConsentRepository,
+  UserRefreshTokenRepository,
+  UserRepository,
+} from '@lib/database';
+import { ConsentType, User } from 'generated/prisma/client';
+
+import {
+  UserConsent,
+  ConsentRequirement,
+  ConsentData,
+  ValidatedConsentData,
+  LatestPolicyVersionResponse,
+  LatestPolicyVersions,
+} from './types/consent.type';
+import {
+  IssueTokenType
+} from './types/jwt-token.type';
+import { UserLoginDto } from './dto/req/user-login.dto';
+import { ConsentRequiredException } from './exceptions/consent-required.exception';
 
 @Injectable()
 export class AuthService {
@@ -38,7 +59,11 @@ export class AuthService {
     private readonly infoteamAccountService: InfoteamAccountService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly databaseService: DatabaseService,
     private readonly httpService: HttpService,
+    private readonly userRepository: UserRepository,
+    private readonly userRefreshTokenRepository: UserRefreshTokenRepository,
+    private readonly userConsentRepository: UserConsentRepository,
   ) {
     this.userJwtSecret =
       this.configService.getOrThrow<string>('USER_JWT_SECRET');
@@ -105,5 +130,338 @@ export class AuthService {
     };
   }
 
+  async userLogin(auth: string, body?: UserLoginDto): Promise<IssueTokenType> {
+    const token = auth.split(' ')[1];
+    if (!token) throw new UnauthorizedException();
+    const userinfo = await this.infoteamAccountService.getUserInfo(token);
 
+    const consentData: ConsentData = {
+      agreedToTerms: body?.agreedToTerms,
+      agreedToPrivacy: body?.agreedToPrivacy,
+      termsVersion: body?.termsVersion,
+      privacyVersion: body?.privacyVersion,
+    };
+
+    const latestPolicyVersions = await this.getLatestPolicyVersions();
+
+    const { user, refreshToken, sessionId, expiredAt } =
+      await this.databaseService.$transaction(async (tx: PrismaTransaction) => {
+        const user = await this.userRepository.upsertUserInTx(userinfo, tx);
+
+        await this.validateAndHandleConsentsInTransaction(
+          user,
+          consentData,
+          latestPolicyVersions,
+          tx,
+        );
+
+        await this.userRefreshTokenRepository.deleteAllUserRefreshTokensInTx(
+          user.uuid,
+          tx,
+        );
+
+        const token = this.generateOpaqueToken();
+        const sessionId = this.generateSessionId();
+        const hashedToken = this.hashRefreshToken(token);
+        const expiredAt = new Date(
+          Date.now() + ms(this.userRefreshTokenExpire),
+        );
+        await this.userRefreshTokenRepository.setUserRefreshTokenInTx(
+          user.uuid,
+          hashedToken,
+          sessionId,
+          expiredAt,
+          tx,
+        );
+
+        return {
+          user,
+          refreshToken: token,
+          sessionId,
+          expiredAt,
+        };
+      });
+
+    const accessToken = this.jwtService.sign(
+      { sessionId },
+      {
+        subject: user.uuid,
+        secret: this.userJwtSecret,
+        expiresIn: this.userJwtExpire,
+        algorithm: 'HS256',
+        audience: this.userJwtAudience,
+        issuer: this.userJwtIssuer,
+      },
+    );
+
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      refreshTokenExpiredAt: expiredAt,
+    };
+  }
+
+  private async validateAndHandleConsentsInTransaction(
+    user: User,
+    consentData: ConsentData,
+    latestPolicyVersions: LatestPolicyVersions,
+    tx: PrismaTransaction,
+  ): Promise<void> {
+    const [latestTermsUserConsent, latestPrivacyUserConsent] =
+      await Promise.all([
+        this.userConsentRepository.getLatestUserConsentInTx(
+          user.uuid,
+          ConsentType.TERMS_OF_SERVICE,
+          tx,
+        ),
+        this.userConsentRepository.getLatestUserConsentInTx(
+          user.uuid,
+          ConsentType.PRIVACY_POLICY,
+          tx,
+        ),
+      ]);
+
+    const termsRequirement = this.checkConsentRequirement(
+      latestTermsUserConsent,
+      latestPolicyVersions.terms,
+    );
+    const privacyRequirement = this.checkConsentRequirement(
+      latestPrivacyUserConsent,
+      latestPolicyVersions.privacy,
+    );
+
+    if (termsRequirement.needsConsent || privacyRequirement.needsConsent) {
+      this.validateConsentData(
+        consentData,
+        termsRequirement,
+        privacyRequirement,
+      );
+
+      await this.saveUserConsentsInTransaction(
+        user,
+        {
+          termsVersion: consentData.termsVersion!,
+          privacyVersion: consentData.privacyVersion!,
+        },
+        termsRequirement.needsConsent,
+        privacyRequirement.needsConsent,
+        tx,
+      );
+    }
+  }
+
+  private checkConsentRequirement(
+    latestConsent: UserConsent | null,
+    activePolicyVersion: string,
+  ): ConsentRequirement {
+    const needsConsent: boolean =
+      !latestConsent || latestConsent.version !== activePolicyVersion;
+    const hasNeverConsented: boolean = !latestConsent;
+
+    return {
+      needsConsent,
+      hasNeverConsented,
+      currentVersion: latestConsent?.version,
+      requiredVersion: activePolicyVersion,
+    };
+  }
+
+  private validateConsentData(
+    {
+      agreedToTerms,
+      agreedToPrivacy,
+      termsVersion,
+      privacyVersion,
+    }: ConsentData,
+    termsRequirement: ConsentRequirement,
+    privacyRequirement: ConsentRequirement,
+  ): void {
+    const isFirstLogin =
+      termsRequirement.hasNeverConsented ||
+      privacyRequirement.hasNeverConsented;
+
+    const missingConsents: {
+      terms?: { currentVersion?: string; requiredVersion: string };
+      privacy?: { currentVersion?: string; requiredVersion: string };
+    } = {};
+
+    if (termsRequirement.needsConsent) {
+      if (!agreedToTerms || !termsVersion) {
+        missingConsents.terms = {
+          currentVersion: termsRequirement.currentVersion,
+          requiredVersion: termsRequirement.requiredVersion,
+        };
+      }
+    }
+
+    if (privacyRequirement.needsConsent) {
+      if (!agreedToPrivacy || !privacyVersion) {
+        missingConsents.privacy = {
+          currentVersion: privacyRequirement.currentVersion,
+          requiredVersion: privacyRequirement.requiredVersion,
+        };
+      }
+    }
+
+    if (missingConsents.terms || missingConsents.privacy) {
+      throw new ConsentRequiredException(
+        isFirstLogin
+          ? 'Consent required for first login'
+          : 'Consent required for updated policy',
+        isFirstLogin ? 'CONSENT_REQUIRED' : 'CONSENT_UPDATE_REQUIRED',
+        {
+          terms: {
+            currentVersion: termsRequirement.currentVersion,
+            requiredVersion: termsRequirement.requiredVersion,
+          },
+          privacy: {
+            currentVersion: privacyRequirement.currentVersion,
+            requiredVersion: privacyRequirement.requiredVersion,
+          },
+        },
+      );
+    }
+
+    const versionErrors: {
+      terms?: { currentVersion?: string; requiredVersion: string };
+      privacy?: { currentVersion?: string; requiredVersion: string };
+    } = {};
+
+    if (
+      termsRequirement.needsConsent &&
+      termsVersion !== termsRequirement.requiredVersion
+    ) {
+      versionErrors.terms = {
+        currentVersion: termsRequirement.currentVersion,
+        requiredVersion: termsRequirement.requiredVersion,
+      };
+    }
+
+    if (
+      privacyRequirement.needsConsent &&
+      privacyVersion !== privacyRequirement.requiredVersion
+    ) {
+      versionErrors.privacy = {
+        currentVersion: privacyRequirement.currentVersion,
+        requiredVersion: privacyRequirement.requiredVersion,
+      };
+    }
+
+    if (versionErrors.terms || versionErrors.privacy) {
+      const errorCode = isFirstLogin
+        ? 'CONSENT_REQUIRED'
+        : 'CONSENT_UPDATE_REQUIRED';
+      const errorMessage = isFirstLogin
+        ? 'Invalid consent version for first login'
+        : 'Invalid consent version for updated policy';
+
+      throw new ConsentRequiredException(errorMessage, errorCode, {
+        terms: {
+          currentVersion: termsRequirement.currentVersion,
+          requiredVersion: termsRequirement.requiredVersion,
+        },
+        privacy: {
+          currentVersion: privacyRequirement.currentVersion,
+          requiredVersion: privacyRequirement.requiredVersion,
+        },
+      });
+    }
+  }
+
+  private async saveUserConsentsInTransaction(
+    user: User,
+    { termsVersion, privacyVersion }: ValidatedConsentData,
+    needTermsConsent: boolean,
+    needPrivacyConsent: boolean,
+    tx: PrismaTransaction,
+  ): Promise<void> {
+    const consentsToCreate: Array<{
+      consentType: ConsentType;
+      version: string;
+    }> = [];
+
+    if (needTermsConsent) {
+      consentsToCreate.push({
+        consentType: ConsentType.TERMS_OF_SERVICE,
+        version: termsVersion,
+      });
+    }
+
+    if (needPrivacyConsent) {
+      consentsToCreate.push({
+        consentType: ConsentType.PRIVACY_POLICY,
+        version: privacyVersion,
+      });
+    }
+
+    if (consentsToCreate.length > 0) {
+      await this.userConsentRepository.createUserConsentsInTx(
+        user.uuid,
+        consentsToCreate,
+        tx,
+      );
+    }
+  }
+
+  private generateOpaqueToken(): string {
+    return crypto.randomBytes(32).toString('base64').replace(/[+/=]/g, '');
+  }
+
+  private generateSessionId(): string {
+    return crypto.randomBytes(16).toString('hex');
+  }
+
+  private hashRefreshToken(token: string): string {
+    return crypto
+      .createHmac('sha256', this.refreshTokenHmacSecret)
+      .update(token)
+      .digest('hex');
+  }
+
+  async findUser(uuid: string): Promise<User> {
+    return this.userRepository.findUser(uuid);
+  }
+
+  async findUserRefreshTokenBySessionId(userUuid: string, sessionId: string) {
+    return this.userRefreshTokenRepository.findUserRefreshTokenBySessionId(
+      userUuid,
+      sessionId,
+    );
+  }
+
+  async userRefresh(refreshToken: string): Promise<IssueTokenType> {
+    const hashedToken = this.hashRefreshToken(refreshToken);
+    const { userUuid, sessionId, expiredAt } =
+      await this.userRefreshTokenRepository.findUserByRefreshToken(hashedToken);
+
+    await this.userRefreshTokenRepository.deleteUserRefreshToken(hashedToken);
+
+    const newRefreshToken = this.generateOpaqueToken();
+    const newHashedToken = this.hashRefreshToken(newRefreshToken);
+    await this.userRefreshTokenRepository.setUserRefreshToken(
+      userUuid,
+      newHashedToken,
+      sessionId,
+      expiredAt,
+    );
+    return {
+      access_token: this.jwtService.sign(
+        { sessionId },
+        {
+          subject: userUuid,
+          secret: this.userJwtSecret,
+          expiresIn: this.userJwtExpire,
+          algorithm: 'HS256',
+          audience: this.userJwtAudience,
+          issuer: this.userJwtIssuer,
+        },
+      ),
+      refresh_token: newRefreshToken,
+      refreshTokenExpiredAt: expiredAt,
+    };
+  }
+
+  async userLogout(userUuid: string): Promise<void> {
+    await this.userRefreshTokenRepository.deleteAllUserRefreshTokens(userUuid);
+  }
 }
