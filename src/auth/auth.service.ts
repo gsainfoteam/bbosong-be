@@ -85,6 +85,7 @@ export class AuthService {
     );
   }
 
+  // 정책 관련 기능 비활성화(IDK policy api uri)
   private async getLatestPolicyVersions(): Promise<LatestPolicyVersions> {
     const { service, tos, privacy } = await firstValueFrom(
       this.httpService.get<LatestPolicyVersionResponse>(this.policyApiUrl).pipe(
@@ -135,25 +136,25 @@ export class AuthService {
     if (!token) throw new UnauthorizedException();
     const userinfo = await this.infoteamAccountService.getUserInfo(token);
 
-    const consentData: ConsentData = {
-      agreedToTerms: body?.agreedToTerms,
-      agreedToPrivacy: body?.agreedToPrivacy,
-      termsVersion: body?.termsVersion,
-      privacyVersion: body?.privacyVersion,
-    };
+    // const consentData: ConsentData = {
+    //   agreedToTerms: body?.agreedToTerms,
+    //   agreedToPrivacy: body?.agreedToPrivacy,
+    //   termsVersion: body?.termsVersion,
+    //   privacyVersion: body?.privacyVersion,
+    // };
 
-    const latestPolicyVersions = await this.getLatestPolicyVersions();
+    // const latestPolicyVersions = await this.getLatestPolicyVersions();
 
     const { user, refreshToken, sessionId, expiredAt } =
       await this.databaseService.$transaction(async (tx: PrismaTransaction) => {
         const user = await this.userRepository.upsertUserInTx(userinfo, tx);
 
-        await this.validateAndHandleConsentsInTransaction(
-          user,
-          consentData,
-          latestPolicyVersions,
-          tx,
-        );
+        // await this.validateAndHandleConsentsInTransaction(
+        //   user,
+        //   consentData,
+        //   latestPolicyVersions,
+        //   tx,
+        // );
 
         await this.userRefreshTokenRepository.deleteAllUserRefreshTokensInTx(
           user.uuid,

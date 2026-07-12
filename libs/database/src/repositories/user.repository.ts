@@ -99,8 +99,9 @@ export class UserRepository {
     {
       name,
       email,
+      phoneNumber,
       studentNumber,
-    }: Pick<User, 'name' | 'email' | 'studentNumber'>,
+    }: Pick<User, 'name' | 'email' | 'phoneNumber' | 'studentNumber'>,
     tx: PrismaTransaction,
   ): Promise<User> {
     const studentHash = this.encryptionService.hash(studentNumber);
@@ -113,12 +114,18 @@ export class UserRepository {
     const [
       encryptedName,
       encryptedEmail,
+      encryptedPhoneNumber,
       encryptedStudentNumber,
     ] = await Promise.all([
       this.encryptionService.encrypt(name, ENCRYPTION_PURPOSE.USER.NAME, uuid),
       this.encryptionService.encrypt(
         email,
         ENCRYPTION_PURPOSE.USER.EMAIL,
+        uuid,
+      ),
+      this.encryptionService.encrypt(
+        phoneNumber,
+        ENCRYPTION_PURPOSE.USER.PHONE_NUMBER,
         uuid,
       ),
       this.encryptionService.encrypt(
@@ -136,6 +143,7 @@ export class UserRepository {
               studentHash,
               name: encryptedName!,
               email: encryptedEmail!,
+              phoneNumber: encryptedPhoneNumber!,
               studentNumber: encryptedStudentNumber!,
             },
           })
@@ -145,6 +153,7 @@ export class UserRepository {
               studentHash,
               name: encryptedName!,
               email: encryptedEmail!,
+              phoneNumber: encryptedPhoneNumber!,
               studentNumber: encryptedStudentNumber!,
             },
           })

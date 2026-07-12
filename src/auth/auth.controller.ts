@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
 import { User } from 'generated/prisma/client';
 import { AuthService } from './auth.service';
 import { GetUser } from './decorator/get-user.decorator';
@@ -20,6 +21,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
+  @ApiSecurity('oauth2')
   async login(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -64,6 +66,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   async logout(
     @GetUser() user: User,

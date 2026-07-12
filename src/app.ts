@@ -80,6 +80,7 @@ export const makeApp = async () => {
               email: 'email',
               student_id: 'student_id',
               profile: 'profile',
+              phone_number: 'phone_number',
             },
           },
         },

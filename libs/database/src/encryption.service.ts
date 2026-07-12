@@ -11,7 +11,9 @@ import {
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
 import { KMSClient, EncryptCommand, DecryptCommand } from '@aws-sdk/client-kms';
-import { User } from 'generated/prisma/client';
+import {
+  User,
+} from 'generated/prisma/client';
 import {
   ENCRYPTION_PURPOSE,
   EncryptionPurpose,
@@ -33,11 +35,19 @@ export class EncryptionService implements OnModuleInit {
   private readonly kmsClient: KMSClient;
 
   constructor(private readonly configService: ConfigService) {
-    this.secretName = this.configService.getOrThrow<string>(
-      'AWS_SECRET_MANAGER_NAME',
-    );
-    this.awsRegion = this.configService.getOrThrow<string>('AWS_REGION');
-    this.kmsKeyId = this.configService.getOrThrow<string>('AWS_KMS_KEY_ID');
+    const bypass =
+      this.configService.get<string>('BYPASS_AWS_ENCRYPTION') === 'true';
+    if (bypass) {
+      this.secretName = '';
+      this.awsRegion = 'ap-northeast-2';
+      this.kmsKeyId = '';
+    } else {
+      this.secretName = this.configService.getOrThrow<string>(
+        'AWS_SECRET_MANAGER_NAME',
+      );
+      this.awsRegion = this.configService.getOrThrow<string>('AWS_REGION');
+      this.kmsKeyId = this.configService.getOrThrow<string>('AWS_KMS_KEY_ID');
+    }
     this.secretsManager = new SecretsManagerClient({
       region: this.awsRegion,
     });
@@ -45,6 +55,17 @@ export class EncryptionService implements OnModuleInit {
   }
 
   async onModuleInit() {
+    const bypass =
+      this.configService.get<string>('BYPASS_AWS_ENCRYPTION') === 'true';
+    if (bypass) {
+      this.pepper =
+        this.configService.get<string>('LOCAL_ENCRYPTION_PEPPER') ??
+        'local-default-pepper';
+      this.isInitialized = true;
+      this.logger.log('Bypassed AWS encryption, using local fallback.');
+      return;
+    }
+
     try {
       const response = await this.secretsManager.send(
         new GetSecretValueCommand({ SecretId: this.secretName }),
@@ -82,6 +103,27 @@ export class EncryptionService implements OnModuleInit {
     if (!text) return text as null;
     this.ensureInitialized();
 
+    const bypass =
+      this.configService.get<string>('BYPASS_AWS_ENCRYPTION') === 'true';
+    if (bypass) {
+      try {
+        const key = crypto.scryptSync(
+          this.configService.get<string>('LOCAL_ENCRYPTION_KEY') ??
+            'local-default-key-32chars-length!!!',
+          'salt',
+          32,
+        );
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+        let encrypted = cipher.update(text, 'utf8', 'base64');
+        encrypted += cipher.final('base64');
+        return iv.toString('base64') + ':' + encrypted;
+      } catch (error) {
+        this.logger.error('Local encryption failed:', error);
+        throw new InternalServerErrorException('Encryption failed');
+      }
+    }
+
     try {
       const command = new EncryptCommand({
         KeyId: this.kmsKeyId,
@@ -111,6 +153,37 @@ export class EncryptionService implements OnModuleInit {
   ): Promise<string | null> {
     if (!encryptedData) return encryptedData as null;
     this.ensureInitialized();
+
+    const bypass =
+      this.configService.get<string>('BYPASS_AWS_ENCRYPTION') === 'true';
+    if (bypass) {
+      try {
+        const parts = encryptedData.split(':');
+        if (parts.length !== 2) {
+          // If it's not a local encryption format, return as is (e.g. if plain or old format)
+          return encryptedData;
+        }
+        const key = crypto.scryptSync(
+          this.configService.get<string>('LOCAL_ENCRYPTION_KEY') ??
+            'local-default-key-32chars-length!!!',
+          'salt',
+          32,
+        );
+        const iv = Buffer.from(parts[0], 'base64');
+        const encryptedText = Buffer.from(parts[1], 'base64');
+        const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+        const decrypted = Buffer.concat([
+          decipher.update(encryptedText),
+          decipher.final(),
+        ]).toString('utf8');
+        return decrypted;
+      } catch (error) {
+        this.logger.error('Local decryption failed:', error);
+        throw new InternalServerErrorException(
+          `Decryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+      }
+    }
 
     try {
       const command = new DecryptCommand({
@@ -147,9 +220,14 @@ export class EncryptionService implements OnModuleInit {
 
   async decryptUser(user: User): Promise<User> {
     if (!user) return user;
-    const [name, email, studentNumber] = await Promise.all([
+    const [name, email, phoneNumber, studentNumber] = await Promise.all([
       this.decrypt(user.name, ENCRYPTION_PURPOSE.USER.NAME, user.uuid),
       this.decrypt(user.email, ENCRYPTION_PURPOSE.USER.EMAIL, user.uuid),
+      this.decrypt(
+        user.phoneNumber,
+        ENCRYPTION_PURPOSE.USER.PHONE_NUMBER,
+        user.uuid,
+      ),
       this.decrypt(
         user.studentNumber,
         ENCRYPTION_PURPOSE.USER.STUDENT_NUMBER,
@@ -160,6 +238,7 @@ export class EncryptionService implements OnModuleInit {
       ...user,
       name: name!,
       email: email!,
+      phoneNumber: phoneNumber!,
       studentNumber: studentNumber!,
     };
   }
