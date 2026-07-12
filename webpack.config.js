@@ -3,10 +3,19 @@ const nodeExternals = require('webpack-node-externals');
 const fs = require('node:fs');
 const glob = require('glob');
 
-const modules = glob.sync('./node_modules/**/package.json');
-const packages = modules.map((module) =>
-  JSON.parse(fs.readFileSync(module, 'utf8')),
-);
+const modules = glob.sync('./node_modules/*/package.json', {
+  ignore: ['node_modules/.*/**'],
+});
+const packages = modules
+  .map((module) => {
+    try {
+      return JSON.parse(fs.readFileSync(module, 'utf8'));
+    } catch {
+      return null;
+    }
+  })
+  .filter(Boolean);
+
 const allowlist = packages
   .filter((packageJson) => packageJson.type === 'module')
   .map((packageJson) => packageJson.name)

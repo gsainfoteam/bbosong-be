@@ -10,6 +10,9 @@ export class DatabaseService
 {
   constructor(private readonly configService: ConfigService) {
     const connectionString = configService.get<string>('DATABASE_URL');
+    if (!connectionString) {
+      throw new Error('DATABASE_URL environment variable not set');
+    }
     const adapter = new PrismaPg({ connectionString });
 
     super({ adapter });

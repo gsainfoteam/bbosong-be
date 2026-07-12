@@ -40,7 +40,7 @@ export class InfoteamAccountService {
         .pipe(
           catchError((error: AxiosError) => {
             if (error instanceof AxiosError && error.response?.status === 401) {
-              this.logger.debug('Invalid refresh token');
+              this.logger.debug('Invalid access token');
               throw new UnauthorizedException();
             }
             this.logger.error(error.message);

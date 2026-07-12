@@ -11,9 +11,7 @@ import {
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
 import { KMSClient, EncryptCommand, DecryptCommand } from '@aws-sdk/client-kms';
-import {
-  User,
-} from 'generated/prisma/client';
+import { User } from 'generated/prisma/client';
 import {
   ENCRYPTION_PURPOSE,
   EncryptionPurpose,
@@ -38,6 +36,20 @@ export class EncryptionService implements OnModuleInit {
     const bypass =
       this.configService.get<string>('BYPASS_AWS_ENCRYPTION') === 'true';
     if (bypass) {
+      if (this.configService.get<string>('NODE_ENV') === 'production') {
+        throw new InternalServerErrorException(
+          'AWS Encryption bypass is not allowed in production environment.',
+        );
+      }
+      const localKey = this.configService.get<string>('LOCAL_ENCRYPTION_KEY');
+      const localPepper = this.configService.get<string>(
+        'LOCAL_ENCRYPTION_PEPPER',
+      );
+      if (!localKey || !localPepper) {
+        throw new InternalServerErrorException(
+          'Bypass mode requires LOCAL_ENCRYPTION_KEY and LOCAL_ENCRYPTION_PEPPER to be explicitly configured.',
+        );
+      }
       this.secretName = '';
       this.awsRegion = 'ap-northeast-2';
       this.kmsKeyId = '';
@@ -58,9 +70,20 @@ export class EncryptionService implements OnModuleInit {
     const bypass =
       this.configService.get<string>('BYPASS_AWS_ENCRYPTION') === 'true';
     if (bypass) {
-      this.pepper =
-        this.configService.get<string>('LOCAL_ENCRYPTION_PEPPER') ??
-        'local-default-pepper';
+      if (this.configService.get<string>('NODE_ENV') === 'production') {
+        throw new InternalServerErrorException(
+          'AWS Encryption bypass is not allowed in production environment.',
+        );
+      }
+      const localPepper = this.configService.get<string>(
+        'LOCAL_ENCRYPTION_PEPPER',
+      );
+      if (!localPepper) {
+        throw new InternalServerErrorException(
+          'Bypass mode requires LOCAL_ENCRYPTION_PEPPER to be explicitly configured.',
+        );
+      }
+      this.pepper = localPepper;
       this.isInitialized = true;
       this.logger.log('Bypassed AWS encryption, using local fallback.');
       return;
@@ -107,12 +130,13 @@ export class EncryptionService implements OnModuleInit {
       this.configService.get<string>('BYPASS_AWS_ENCRYPTION') === 'true';
     if (bypass) {
       try {
-        const key = crypto.scryptSync(
-          this.configService.get<string>('LOCAL_ENCRYPTION_KEY') ??
-            'local-default-key-32chars-length!!!',
-          'salt',
-          32,
-        );
+        const localKey = this.configService.get<string>('LOCAL_ENCRYPTION_KEY');
+        if (!localKey) {
+          throw new InternalServerErrorException(
+            'LOCAL_ENCRYPTION_KEY must be explicitly configured in bypass mode.',
+          );
+        }
+        const key = crypto.scryptSync(localKey, this.pepper, 32);
         const iv = crypto.randomBytes(16);
         const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
         let encrypted = cipher.update(text, 'utf8', 'base64');
@@ -160,17 +184,22 @@ export class EncryptionService implements OnModuleInit {
       try {
         const parts = encryptedData.split(':');
         if (parts.length !== 2) {
-          // If it's not a local encryption format, return as is (e.g. if plain or old format)
-          return encryptedData;
+          throw new InternalServerErrorException(
+            'Mismatched or malformed local ciphertext: missing IV or ciphertext component.',
+          );
         }
-        const key = crypto.scryptSync(
-          this.configService.get<string>('LOCAL_ENCRYPTION_KEY') ??
-            'local-default-key-32chars-length!!!',
-          'salt',
-          32,
-        );
+        const localKey = this.configService.get<string>('LOCAL_ENCRYPTION_KEY');
+        if (!localKey) {
+          throw new InternalServerErrorException(
+            'LOCAL_ENCRYPTION_KEY must be explicitly configured in bypass mode.',
+          );
+        }
+        const key = crypto.scryptSync(localKey, this.pepper, 32);
         const iv = Buffer.from(parts[0], 'base64');
         const encryptedText = Buffer.from(parts[1], 'base64');
+        if (iv.length !== 16) {
+          throw new Error('Invalid IV length');
+        }
         const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
         const decrypted = Buffer.concat([
           decipher.update(encryptedText),
@@ -183,6 +212,12 @@ export class EncryptionService implements OnModuleInit {
           `Decryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         );
       }
+    }
+
+    if (encryptedData.includes(':')) {
+      throw new InternalServerErrorException(
+        'Mismatched encryption mode: local ciphertext format cannot be decrypted in KMS mode.',
+      );
     }
 
     try {
