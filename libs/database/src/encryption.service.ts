@@ -17,6 +17,7 @@ export class EncryptionService implements OnModuleInit {
   private readonly logger = new Logger(EncryptionService.name);
   private pepper!: string;
   private isInitialized = false;
+  private derivedKey!: Buffer;
 
   constructor(private readonly configService: ConfigService) {
     // Validate configuration early
@@ -35,6 +36,10 @@ export class EncryptionService implements OnModuleInit {
     this.pepper = this.configService.getOrThrow<string>(
       'LOCAL_ENCRYPTION_PEPPER',
     );
+    const localKey = this.configService.getOrThrow<string>(
+      'LOCAL_ENCRYPTION_KEY',
+    );
+    this.derivedKey = crypto.scryptSync(localKey, this.pepper, 32);
     this.isInitialized = true;
     this.logger.log('EncryptionService initialized using local configuration.');
   }
@@ -56,10 +61,7 @@ export class EncryptionService implements OnModuleInit {
     this.ensureInitialized();
 
     try {
-      const localKey = this.configService.getOrThrow<string>(
-        'LOCAL_ENCRYPTION_KEY',
-      );
-      const key = crypto.scryptSync(localKey, this.pepper, 32);
+      const key = this.derivedKey;
       const iv = crypto.randomBytes(16);
       const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
       let encrypted = cipher.update(text, 'utf8', 'base64');
@@ -86,10 +88,7 @@ export class EncryptionService implements OnModuleInit {
           'Mismatched or malformed local ciphertext: missing IV or ciphertext component.',
         );
       }
-      const localKey = this.configService.getOrThrow<string>(
-        'LOCAL_ENCRYPTION_KEY',
-      );
-      const key = crypto.scryptSync(localKey, this.pepper, 32);
+      const key = this.derivedKey;
       const iv = Buffer.from(parts[0], 'base64');
       const encryptedText = Buffer.from(parts[1], 'base64');
       if (iv.length !== 16) {
@@ -103,9 +102,7 @@ export class EncryptionService implements OnModuleInit {
       return Promise.resolve(decrypted);
     } catch (error) {
       this.logger.error('Local decryption failed:', error);
-      throw new InternalServerErrorException(
-        `Decryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
+      throw new InternalServerErrorException('Decryption failed');
     }
   }
 
