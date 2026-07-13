@@ -37,9 +37,7 @@ import {
   LatestPolicyVersionResponse,
   LatestPolicyVersions,
 } from './types/consent.type';
-import {
-  IssueTokenType
-} from './types/jwt-token.type';
+import { IssueTokenType } from './types/jwt-token.type';
 import { UserLoginDto } from './dto/req/user-login.dto';
 import { ConsentRequiredException } from './exceptions/consent-required.exception';
 
@@ -131,7 +129,7 @@ export class AuthService {
     };
   }
 
-  async userLogin(auth: string, body?: UserLoginDto): Promise<IssueTokenType> {
+  async userLogin(auth: string, _body?: UserLoginDto): Promise<IssueTokenType> {
     const token = auth.split(' ')[1];
     if (!token) throw new UnauthorizedException();
     const userinfo = await this.infoteamAccountService.getUserInfo(token);

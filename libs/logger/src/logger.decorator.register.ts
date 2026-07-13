@@ -39,41 +39,39 @@ export class LoggerDecoratorRegister implements OnModuleInit {
 
         const target = instance as InstanceWithMethods;
 
-        this.metadataScanner
-          .getAllMethodNames(target as object)
-          .forEach((methodName) => {
-            const originalMethod = target[methodName];
+        this.metadataScanner.getAllMethodNames(target).forEach((methodName) => {
+          const originalMethod = target[methodName];
 
-            if (typeof originalMethod !== 'function') {
-              return;
+          if (typeof originalMethod !== 'function') {
+            return;
+          }
+
+          const logger = new Logger(target.constructor.name);
+
+          const wrapped: AnyMethod = function (
+            this: unknown,
+            ...args: unknown[]
+          ): unknown {
+            logger.log(`Before ${methodName}`);
+            const now = Date.now();
+            const result: unknown = (originalMethod as AnyMethod).apply(
+              this,
+              args,
+            );
+
+            if (result instanceof Promise) {
+              return result.then((resolvedResult: unknown) => {
+                logger.log(`After ${methodName} +${Date.now() - now}ms`);
+                return resolvedResult;
+              });
             }
 
-            const logger = new Logger(target.constructor.name);
+            logger.log(`After ${methodName} +${Date.now() - now}ms`);
+            return result;
+          };
 
-            const wrapped: AnyMethod = function (
-              this: unknown,
-              ...args: unknown[]
-            ): unknown {
-              logger.log(`Before ${methodName}`);
-              const now = Date.now();
-              const result: unknown = (originalMethod as AnyMethod).apply(
-                this,
-                args,
-              );
-
-              if (result instanceof Promise) {
-                return result.then((resolvedResult: unknown) => {
-                  logger.log(`After ${methodName} +${Date.now() - now}ms`);
-                  return resolvedResult;
-                });
-              }
-
-              logger.log(`After ${methodName} +${Date.now() - now}ms`);
-              return result;
-            };
-
-            target[methodName] = wrapped;
-          });
+          target[methodName] = wrapped;
+        });
       });
   }
 }
