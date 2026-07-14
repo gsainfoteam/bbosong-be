@@ -9,9 +9,10 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '../database.service';
 import { EncryptionService } from '../encryption.service';
-import { Prisma, Role, User } from 'generated/prisma/client';
+import { Gender, Prisma, Role, User } from 'generated/prisma/client';
 import { PrismaTransaction } from '../types';
 import { ENCRYPTION_PURPOSE } from '../constants/encryption.constants';
+import { GenderRequiredException } from '../../../../src/auth/exceptions/gender-required.exception';
 
 @Loggable()
 @Injectable()
@@ -99,9 +100,10 @@ export class UserRepository {
     {
       name,
       email,
-      phoneNumber,
       studentNumber,
-    }: Pick<User, 'name' | 'email' | 'phoneNumber' | 'studentNumber'>,
+    }: Pick<User, 'name' | 'email' | 'studentNumber'>,
+    // }: Pick<User, 'name' | 'email' | 'phoneNumber' | 'studentNumber'>,
+    gender: Gender | undefined,
     tx: PrismaTransaction,
   ): Promise<User> {
     const studentHash = this.encryptionService.hash(studentNumber);
@@ -109,12 +111,13 @@ export class UserRepository {
       studentHash,
       tx,
     );
+    if (!existingUser && !gender) throw new GenderRequiredException();
     const uuid = existingUser?.uuid ?? crypto.randomUUID();
 
     const [
       encryptedName,
       encryptedEmail,
-      encryptedPhoneNumber,
+      // encryptedPhoneNumber,
       encryptedStudentNumber,
     ] = await Promise.all([
       this.encryptionService.encrypt(name, ENCRYPTION_PURPOSE.USER.NAME, uuid),
@@ -123,11 +126,11 @@ export class UserRepository {
         ENCRYPTION_PURPOSE.USER.EMAIL,
         uuid,
       ),
-      this.encryptionService.encrypt(
-        phoneNumber,
-        ENCRYPTION_PURPOSE.USER.PHONE_NUMBER,
-        uuid,
-      ),
+      // this.encryptionService.encrypt(
+      //   phoneNumber,
+      //   ENCRYPTION_PURPOSE.USER.PHONE_NUMBER,
+      //   uuid,
+      // ),
       this.encryptionService.encrypt(
         studentNumber,
         ENCRYPTION_PURPOSE.USER.STUDENT_NUMBER,
@@ -143,8 +146,9 @@ export class UserRepository {
               studentHash,
               name: encryptedName!,
               email: encryptedEmail!,
-              phoneNumber: encryptedPhoneNumber!,
+              // phoneNumber: encryptedPhoneNumber!,
               studentNumber: encryptedStudentNumber!,
+              // gender: gender,
             },
           })
         : tx.user.create({
@@ -153,8 +157,9 @@ export class UserRepository {
               studentHash,
               name: encryptedName!,
               email: encryptedEmail!,
-              phoneNumber: encryptedPhoneNumber!,
+              // phoneNumber: encryptedPhoneNumber!,
               studentNumber: encryptedStudentNumber!,
+              gender: gender!,
             },
           })
     )

@@ -38,8 +38,9 @@ model User {
   studentHash   String    @unique @map("student_hash")
   name          String
   email         String
-  phoneNumber   String    @map("phone_number")
+  // phoneNumber   String    @map("phone_number")
   studentNumber String    @map("student_number")
+  gender        Gender    @map("gender")
   role          Role      @default(USER)
   deletedAt     DateTime? @map("deleted_at")
   createdAt     DateTime  @default(now()) @map("created_at")

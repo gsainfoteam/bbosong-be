@@ -53,19 +53,20 @@ export class InfoteamAccountService {
       name,
       email,
       student_id: studentNumber,
-      phone_number: phoneNumber,
-      is_phone_number_verified: isPhoneNumberVerified,
+      // phone_number: phoneNumber,
+      // is_phone_number_verified: isPhoneNumberVerified,
       is_student_id_verified: isStudentIdVerified,
     } = userInfoResponse.data;
 
-    if (!isPhoneNumberVerified) {
-      throw new UnauthorizedException('Phone number not verified');
-    }
+    // if (!isPhoneNumberVerified) {
+    //   throw new UnauthorizedException('Phone number not verified');
+    // }
 
     if (!isStudentIdVerified) {
       throw new UnauthorizedException('Student ID not verified');
     }
 
-    return { name, email, studentNumber, phoneNumber };
+    // return { name, email, studentNumber, phoneNumber };
+    return { name, email, studentNumber };
   }
 }
