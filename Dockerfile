@@ -16,7 +16,7 @@ RUN bun install --production
 FROM installer AS builder
 COPY . .
 # COPY --from=prod /usr/src/app/generated ./generated
-RUN bun install && bun run build
+RUN bunx --bun prisma generate && bun install && bun run build
 
 # copy production dependencies and source code into final image
 FROM base AS release
