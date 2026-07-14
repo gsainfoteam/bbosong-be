@@ -83,7 +83,7 @@ export class AuthService {
     );
   }
 
-  // 정책 관련 기능 비활성화(IDK policy api uri)
+  // 정책 관련 기능 비활성화(IDK policy api url)
   private async getLatestPolicyVersions(): Promise<LatestPolicyVersions> {
     const { service, tos, privacy } = await firstValueFrom(
       this.httpService.get<LatestPolicyVersionResponse>(this.policyApiUrl).pipe(
@@ -129,7 +129,7 @@ export class AuthService {
     };
   }
 
-  async userLogin(auth: string, _body?: UserLoginDto): Promise<IssueTokenType> {
+  async userLogin(auth: string, body?: UserLoginDto): Promise<IssueTokenType> {
     const token = auth.split(' ')[1];
     if (!token) throw new UnauthorizedException();
     const userinfo = await this.infoteamAccountService.getUserInfo(token);
@@ -145,7 +145,11 @@ export class AuthService {
 
     const { user, refreshToken, sessionId, expiredAt } =
       await this.databaseService.$transaction(async (tx: PrismaTransaction) => {
-        const user = await this.userRepository.upsertUserInTx(userinfo, tx);
+        const user = await this.userRepository.upsertUserInTx(
+          userinfo,
+          body?.gender,
+          tx,
+        );
 
         // await this.validateAndHandleConsentsInTransaction(
         //   user,

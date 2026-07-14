@@ -2,13 +2,25 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDefined,
+  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
   ValidateIf,
 } from 'class-validator';
 
+import { Gender } from 'generated/prisma/enums';
+
 export class UserLoginDto {
+  @ApiPropertyOptional({
+    description: 'Gender of the user',
+    enum: Gender,
+    example: Gender.MALE,
+  })
+  @IsEnum(Gender)
+  @IsOptional()
+  gender?: Gender;
+
   @ApiPropertyOptional({
     description: 'Whether user agreed to terms of service',
     example: true,

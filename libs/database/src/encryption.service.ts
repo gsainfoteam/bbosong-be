@@ -117,14 +117,15 @@ export class EncryptionService implements OnModuleInit {
 
   async decryptUser(user: User): Promise<User> {
     if (!user) return user;
-    const [name, email, phoneNumber, studentNumber] = await Promise.all([
+    const [name, email, studentNumber] = await Promise.all([
+      // const [name, email, phoneNumber, studentNumber] = await Promise.all([
       this.decrypt(user.name, ENCRYPTION_PURPOSE.USER.NAME, user.uuid),
       this.decrypt(user.email, ENCRYPTION_PURPOSE.USER.EMAIL, user.uuid),
-      this.decrypt(
-        user.phoneNumber,
-        ENCRYPTION_PURPOSE.USER.PHONE_NUMBER,
-        user.uuid,
-      ),
+      // this.decrypt(
+      //   user.phoneNumber,
+      //   ENCRYPTION_PURPOSE.USER.PHONE_NUMBER,
+      //   user.uuid,
+      // ),
       this.decrypt(
         user.studentNumber,
         ENCRYPTION_PURPOSE.USER.STUDENT_NUMBER,
@@ -135,7 +136,7 @@ export class EncryptionService implements OnModuleInit {
       ...user,
       name: name!,
       email: email!,
-      phoneNumber: phoneNumber!,
+      // phoneNumber: phoneNumber!,
       studentNumber: studentNumber!,
     };
   }
