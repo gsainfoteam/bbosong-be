@@ -40,6 +40,7 @@ import {
 import { IssueTokenType } from './types/jwt-token.type';
 import { UserLoginDto } from './dto/req/user-login.dto';
 import { ConsentRequiredException } from './exceptions/consent-required.exception';
+import { AuditLogService } from '@lib/audit-log';
 
 @Injectable()
 export class AuthService {
@@ -62,6 +63,7 @@ export class AuthService {
     private readonly userRepository: UserRepository,
     private readonly userRefreshTokenRepository: UserRefreshTokenRepository,
     private readonly userConsentRepository: UserConsentRepository,
+    private readonly auditLogService: AuditLogService,
   ) {
     this.userJwtSecret =
       this.configService.getOrThrow<string>('USER_JWT_SECRET');
@@ -150,6 +152,12 @@ export class AuthService {
           body?.gender,
           tx,
         );
+        await this.auditLogService.createAuditLogInTx(
+          user.uuid,
+          'USER_LOGIN',
+          '',
+          tx,
+        );
 
         // await this.validateAndHandleConsentsInTransaction(
         //   user,
@@ -158,10 +166,10 @@ export class AuthService {
         //   tx,
         // );
 
-        await this.userRefreshTokenRepository.deleteAllUserRefreshTokensInTx(
-          user.uuid,
-          tx,
-        );
+        // await this.userRefreshTokenRepository.deleteAllUserRefreshTokensInTx(
+        //   user.uuid,
+        //   tx,
+        // );
 
         const token = this.generateOpaqueToken();
         const sessionId = this.generateSessionId();

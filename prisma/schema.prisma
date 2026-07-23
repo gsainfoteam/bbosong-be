@@ -33,6 +33,20 @@ enum Gender {
   @@map("gender")
 }
 
+enum Location {
+  A
+  B
+
+  @@map("location")
+}
+
+enum MachineType {
+  WASHER
+  DRYER
+
+  @@map("machine_type")
+}
+
 model User {
   uuid          String    @id @db.Uuid
   studentHash   String    @unique @map("student_hash")
@@ -46,6 +60,7 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
+  usingMachines     UsingMachine[]
   userRefreshTokens UserRefreshToken[]
   userConsents      UserConsent[]
   auditLogs         AuditLog[]
@@ -81,14 +96,49 @@ model UserConsent {
 }
 
 model AuditLog {
-  uuid        String   @id @default(uuid()) @db.Uuid
-  action      String
-  data        String
-  userUuid    String   @map("user_uuid") @db.Uuid
+  uuid   String @id @default(uuid()) @db.Uuid
+  action String
+  data   String
+
+  userUuid    String?  @map("user_uuid") @db.Uuid
   performedAt DateTime @default(now()) @map("performed_at")
 
-  user User @relation(fields: [userUuid], references: [uuid])
+  user User? @relation(fields: [userUuid], references: [uuid], onDelete: SetNull)
 
   @@index([performedAt])
+  @@index([userUuid])
   @@map("audit_log")
+}
+
+model Machine {
+  uuid        String      @id @default(uuid()) @db.Uuid
+  type        MachineType @map("type")
+  location    Location    @map("location")
+  gender      Gender      @map("gender")
+  index       Int         @map("index")
+  isAvailable Boolean     @default(true) @map("isAvailable")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  currentUsage UsingMachine?
+
+  @@unique([location, gender, type, index])
+  @@index([location, gender])
+  @@map("machine")
+}
+
+model UsingMachine {
+  uuid            String   @id @default(uuid()) @db.Uuid
+  machineUuid     String   @unique @map("machine_uuid") @db.Uuid
+  userUuid        String   @map("user_uuid") @db.Uuid
+  startedAt       DateTime @default(now()) @map("started_at")
+  durationMinutes Int      @map("duration_minutes")
+
+  machine Machine @relation(fields: [machineUuid], references: [uuid], onDelete: Cascade)
+
+  user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
+
+  @@index([userUuid])
+  @@map("using_machine")
 }
