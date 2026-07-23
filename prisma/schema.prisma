@@ -111,11 +111,12 @@ model AuditLog {
 }
 
 model Machine {
-  uuid     String      @id @default(uuid()) @db.Uuid
-  type     MachineType @map("type")
-  location Location    @map("location")
-  gender   Gender      @map("gender")
-  index    Int         @map("index")
+  uuid        String      @id @default(uuid()) @db.Uuid
+  type        MachineType @map("type")
+  location    Location    @map("location")
+  gender      Gender      @map("gender")
+  index       Int         @map("index")
+  isAvailable Boolean     @default(true) @map("isAvailable")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
-import { UserConsentRepository } from '@lib/database/repositories';
-import { UserRefreshTokenRepository } from '@lib/database/repositories';
-import { UserRepository } from '@lib/database/repositories';
+import { ConfigModule } from '@nestjs/config';
 import { DatabaseService } from './database.service';
 import { EncryptionService } from './encryption.service';
-import { ConfigModule } from '@nestjs/config';
+import {
+  UserConsentRepository,
+  UserRefreshTokenRepository,
+  UserRepository,
+  AuditLogRepository,
+  MachineRepository,
+} from './repositories';
 
 @Module({
   imports: [ConfigModule],
@@ -14,6 +18,8 @@ import { ConfigModule } from '@nestjs/config';
     UserConsentRepository,
     UserRefreshTokenRepository,
     UserRepository,
+    AuditLogRepository,
+    MachineRepository,
   ],
   exports: [
     DatabaseService,
@@ -21,6 +27,8 @@ import { ConfigModule } from '@nestjs/config';
     UserConsentRepository,
     UserRefreshTokenRepository,
     UserRepository,
+    AuditLogRepository,
+    MachineRepository,
   ],
 })
 export class DatabaseModule {}
