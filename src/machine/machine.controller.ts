@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse } from '@nestjs/swagger';
+import { UserGuard } from '../auth/guard/user.guard';
 import { MachineService } from './machine.service';
 import { GetLaundryRoomStatusReqDto } from './dto/req/get-laundry-room-status-req.dto';
 import { GetLaundryRoomStatusResDto } from './dto/res/get-laundry-room-status-res.dto';
@@ -25,7 +26,7 @@ export class MachineController {
   constructor(private readonly machineService: MachineService) {}
 
   @ApiBearerAuth('machine')
-  @UseGuards(UseGuards)
+  @UseGuards(UserGuard)
   @Get('summary')
   @ApiOkResponse({
     type: GetLaundryRoomStatusResDto,
@@ -39,7 +40,7 @@ export class MachineController {
   }
 
   @ApiBearerAuth('machine')
-  @UseGuards(UseGuards)
+  @UseGuards(UserGuard)
   @Post()
   async createMachine(
     @Query() query: CreateMachineReqDto,
@@ -52,7 +53,7 @@ export class MachineController {
   }
 
   @ApiBearerAuth('machine')
-  @UseGuards(UseGuards)
+  @UseGuards(UserGuard)
   @Post('/multiple')
   async createMultipleMachines(
     @Query() query: CreateMultipleMachinesReqDto,
@@ -62,7 +63,7 @@ export class MachineController {
   }
 
   @ApiBearerAuth('machine')
-  @UseGuards(UseGuards)
+  @UseGuards(UserGuard)
   @Delete(':uuid')
   async deleteMachine(@Param('uuid') uuid: string) {
     await this.machineService.deleteMachine(uuid);

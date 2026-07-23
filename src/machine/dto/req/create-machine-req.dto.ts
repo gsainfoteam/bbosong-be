@@ -1,6 +1,7 @@
 import { Gender, Location, MachineType } from 'generated/prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsNumber, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNumber, Max, Min } from 'class-validator';
+import { IsGreaterThan } from 'src/common/decorator/is-greater-than.decorator';
 
 export class CreateMachineReqDto {
   @ApiProperty({
@@ -36,6 +37,7 @@ export class CreateMachineReqDto {
     required: true,
   })
   @IsInt()
+  @Min(1)
   index: number;
 }
 
@@ -77,10 +79,12 @@ export class CreateMultipleMachinesReqDto {
   startIndex: number;
 
   @ApiProperty({
-    description: 'Start index',
+    description: 'End index',
     example: 1,
     required: true,
   })
   @IsNumber()
+  @Max(30)
+  @IsGreaterThan('startIndex')
   endIndex: number;
 }

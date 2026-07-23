@@ -12,7 +12,7 @@ import { LaundryRoomSummary } from '@lib/database/types/machine.type';
 import {
   CreateMachineReqDto,
   CreateMultipleMachinesReqDto,
-} from '../../../../src/machine/dto/req/create-machine-req.dto';
+} from 'src/machine/dto/req/create-machine-req.dto';
 
 @Loggable()
 @Injectable()
@@ -28,6 +28,7 @@ export class MachineRepository {
         by: ['location', 'gender', 'type'],
         where: {
           gender: gender,
+          isAvailable: true,
           currentUsage: {
             is: null,
           },
@@ -63,12 +64,12 @@ export class MachineRepository {
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
           if (error.code === 'P2002') {
-            throw new ConflictException('Article already exists.');
+            throw new ConflictException('Machine already exists.');
           }
-          this.logger.error(`createArticle prisma error: ${error.message}`);
+          this.logger.error(`createMachine prisma error: ${error.message}`);
           throw new InternalServerErrorException('Database Error');
         }
-        this.logger.error(`createArticle error: ${error}`);
+        this.logger.error(`createMachine error: ${error}`);
         throw new InternalServerErrorException('Unknown Error');
       });
   }
@@ -78,7 +79,7 @@ export class MachineRepository {
   ): Promise<Machine[]> {
     const itemCount = data.endIndex - data.startIndex + 1;
 
-    return this.databaseService.machine
+    const machines = await this.databaseService.machine
       .createManyAndReturn({
         data: Array.from({ length: itemCount }, (_, i) => {
           const currentIndex = data.startIndex + i;
@@ -105,6 +106,8 @@ export class MachineRepository {
         this.logger.error(`createMultipleMachines error: ${error}`);
         throw new InternalServerErrorException('Unknown Error');
       });
+
+    return machines.sort((a, b) => a.index - b.index);
   }
 
   async deleteMachine(uuid: string): Promise<void> {
