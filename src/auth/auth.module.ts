@@ -8,6 +8,7 @@ import { DatabaseModule } from '@lib/database';
 import { HttpModule } from '@nestjs/axios';
 import { PassportModule } from '@nestjs/passport';
 import { UserStrategy } from './guard/user.strategy';
+import { AuditLogModule } from '@lib/audit-log';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { UserStrategy } from './guard/user.strategy';
     DatabaseModule,
     HttpModule,
     PassportModule,
+    AuditLogModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, UserStrategy],
