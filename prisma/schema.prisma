@@ -64,6 +64,9 @@ model User {
   userRefreshTokens UserRefreshToken[]
   userConsents      UserConsent[]
   auditLogs         AuditLog[]
+  pushSubscriptions        UserPushSubscription[]
+  laundryRoomSubscriptions LaundryRoomSubscription[]
+  machineSubscriptions     MachineSubscription[]
 
   @@map("user")
 }
@@ -122,6 +125,7 @@ model Machine {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   currentUsage UsingMachine?
+  subscriptions MachineSubscription[]
 
   @@unique([location, gender, type, index])
   @@index([location, gender])
@@ -141,4 +145,48 @@ model UsingMachine {
 
   @@index([userUuid])
   @@map("using_machine")
+}
+
+model UserPushSubscription {
+  uuid      String   @id @default(uuid()) @db.Uuid
+  userUuid  String   @map("user_uuid") @db.Uuid
+  endpoint  String   @unique @map("endpoint")
+  p256dh    String   @map("p256dh")
+  auth      String   @map("auth")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
+
+  @@index([userUuid])
+  @@map("user_push_subscription")
+}
+
+model LaundryRoomSubscription {
+  uuid      String      @id @default(uuid()) @db.Uuid
+  userUuid  String      @map("user_uuid") @db.Uuid
+  location  Location    @map("location")
+  gender    Gender      @map("gender")
+  type      MachineType @map("type")
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
+
+  @@index([userUuid])
+  @@index([location, gender, type])
+  @@map("laundry_room_subscription")
+}
+
+model MachineSubscription {
+  uuid        String   @id @default(uuid()) @db.Uuid
+  userUuid    String   @map("user_uuid") @db.Uuid
+  machineUuid String   @map("machine_uuid") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
+  machine Machine @relation(fields: [machineUuid], references: [uuid], onDelete: Cascade)
+
+  @@index([userUuid])
+  @@index([machineUuid])
+  @@map("machine_subscription")
 }
