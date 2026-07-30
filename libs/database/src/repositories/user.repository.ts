@@ -8,10 +8,8 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database.service';
-import { EncryptionService } from '../encryption.service';
 import { Gender, Prisma, Role, User } from 'generated/prisma/client';
 import { PrismaTransaction } from '../types';
-import { ENCRYPTION_PURPOSE } from '../constants/encryption.constants';
 import { GenderRequiredException } from '../../../../src/auth/exceptions/gender-required.exception';
 
 @Loggable()
@@ -19,10 +17,7 @@ import { GenderRequiredException } from '../../../../src/auth/exceptions/gender-
 export class UserRepository {
   private readonly logger = new Logger(UserRepository.name);
 
-  constructor(
-    private readonly databaseService: DatabaseService,
-    private readonly encryptionService: EncryptionService,
-  ) {}
+  constructor(private readonly databaseService: DatabaseService) {}
 
   async findUser(uuid: string): Promise<User> {
     return await this.databaseService.user
@@ -32,7 +27,6 @@ export class UserRepository {
           deletedAt: null,
         },
       })
-      .then(async (user) => await this.encryptionService.decryptUser(user))
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
           if (error.code === 'P2025') {
@@ -47,135 +41,55 @@ export class UserRepository {
       });
   }
 
-  async findUserByNameAndStudentNumber(
-    name: string,
-    studentNumber: string,
-  ): Promise<User> {
-    const studentHash = this.encryptionService.hash(studentNumber);
-
-    return await this.databaseService.user
-      .findFirst({
-        where: {
-          studentHash,
-          deletedAt: null,
-        },
-      })
-      .then(async (user) => {
-        if (!user) {
-          throw new NotFoundException('User not found');
-        }
-        return await this.encryptionService.decryptUser(user);
-      })
-      .catch((error) => {
-        if (error instanceof NotFoundException) {
-          throw error;
-        }
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          this.logger.error(
-            `findUserByNameAndStudentNumber prisma error: ${error.message}`,
-          );
-          throw new InternalServerErrorException('Database Error');
-        }
-        this.logger.error(`findUserByNameAndStudentNumber error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
-      })
-      .then((user) => {
-        if (user.name !== name) {
-          throw new NotFoundException('User not found');
-        }
-        return user;
-      });
-  }
-
-  private async findExistingUserByStudentHashInTx(
-    studentHash: string,
-    tx: PrismaTransaction,
-  ) {
-    return await tx.user.findUnique({
-      where: { studentHash },
-    });
-  }
-
   async upsertUserInTx(
     {
       name,
       email,
       studentNumber,
     }: Pick<User, 'name' | 'email' | 'studentNumber'>,
-    // }: Pick<User, 'name' | 'email' | 'phoneNumber' | 'studentNumber'>,
     gender: Gender | undefined,
     tx: PrismaTransaction,
   ): Promise<User> {
-    const studentHash = this.encryptionService.hash(studentNumber);
-    const existingUser = await this.findExistingUserByStudentHashInTx(
-      studentHash,
-      tx,
-    );
+    const existingUser = await tx.user.findUnique({
+      where: {
+        studentNumber,
+      },
+    });
     if (!existingUser && !gender) throw new GenderRequiredException();
     const uuid = existingUser?.uuid ?? crypto.randomUUID();
-
-    const [
-      encryptedName,
-      encryptedEmail,
-      // encryptedPhoneNumber,
-      encryptedStudentNumber,
-    ] = await Promise.all([
-      this.encryptionService.encrypt(name, ENCRYPTION_PURPOSE.USER.NAME, uuid),
-      this.encryptionService.encrypt(
-        email,
-        ENCRYPTION_PURPOSE.USER.EMAIL,
-        uuid,
-      ),
-      // this.encryptionService.encrypt(
-      //   phoneNumber,
-      //   ENCRYPTION_PURPOSE.USER.PHONE_NUMBER,
-      //   uuid,
-      // ),
-      this.encryptionService.encrypt(
-        studentNumber,
-        ENCRYPTION_PURPOSE.USER.STUDENT_NUMBER,
-        uuid,
-      ),
-    ]);
 
     return await (
       existingUser
         ? tx.user.update({
             where: { uuid: existingUser.uuid },
             data: {
-              studentHash,
-              name: encryptedName!,
-              email: encryptedEmail!,
-              // phoneNumber: encryptedPhoneNumber!,
-              studentNumber: encryptedStudentNumber!,
-              // gender: gender,
+              name,
+              email,
+              studentNumber,
+              gender,
             },
           })
         : tx.user.create({
             data: {
               uuid,
-              studentHash,
-              name: encryptedName!,
-              email: encryptedEmail!,
-              // phoneNumber: encryptedPhoneNumber!,
-              studentNumber: encryptedStudentNumber!,
+              name,
+              email,
+              studentNumber,
               gender: gender!,
             },
           })
-    )
-      .then(async (user) => await this.encryptionService.decryptUser(user))
-      .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          if (error.code === 'P2002') {
-            this.logger.debug(`Conflict studentHash: ${error.message}`);
-            throw new ConflictException('Conflict Error');
-          }
-          this.logger.error(`upsertUserInTx prisma error: ${error.message}`);
-          throw new InternalServerErrorException('Database Error');
+    ).catch((error) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          this.logger.debug(`Conflict studentHash: ${error.message}`);
+          throw new ConflictException('Conflict Error');
         }
-        this.logger.error(`upsertUserInTx error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
-      });
+        this.logger.error(`upsertUserInTx prisma error: ${error.message}`);
+        throw new InternalServerErrorException('Database Error');
+      }
+      this.logger.error(`upsertUserInTx error: ${error}`);
+      throw new InternalServerErrorException('Unknown Error');
+    });
   }
 
   async updateUserRole(userUuid: string, role: Role): Promise<void> {
@@ -239,42 +153,4 @@ export class UserRepository {
         throw new InternalServerErrorException('Unknown Error');
       });
   }
-
-  // async findActiveAdmins(): Promise<User[]> {
-  //   return await this.databaseService.user
-  //     .findMany({
-  //       where: {
-  //         deletedAt: null,
-  //         role: { in: [Role.ADMIN, Role.SUPERADMIN] },
-  //       },
-  //       orderBy: { createdAt: 'asc' },
-  //     })
-  //     .then(async (users) =>
-  //       Promise.all(users.map((u) => this.encryptionService.decryptUser(u))),
-  //     )
-  //     .catch((error) => {
-  //       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-  //         this.logger.error(`findActiveAdmins prisma error: ${error.message}`);
-  //         throw new InternalServerErrorException('Database Error');
-  //       }
-  //       this.logger.error(`findActiveAdmins error: ${error}`);
-  //       throw new InternalServerErrorException('Unknown Error');
-  //     });
-  // }
-
-  /**
-   * Lock the current active SUPERADMIN row (if any) within a transaction.
-   * This uses raw SQL to ensure the row is locked with FOR UPDATE.
-   */
-  // async lockActiveSuperAdminUuidInTx(
-  //   tx: PrismaTransaction,
-  // ): Promise<string | null> {
-  //   const rows = await tx.$queryRaw<Array<{ uuid: string }>>`
-  //     SELECT uuid
-  //     FROM "user"
-  //     WHERE "deleted_at" IS NULL AND "role" = 'SUPERADMIN'
-  //     FOR UPDATE
-  //   `;
-  //   return rows[0]?.uuid ?? null;
-  // }
 }

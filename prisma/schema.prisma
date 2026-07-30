@@ -49,21 +49,19 @@ enum MachineType {
 
 model User {
   uuid          String    @id @db.Uuid
-  studentHash   String    @unique @map("student_hash")
   name          String
   email         String
-  // phoneNumber   String    @map("phone_number")
-  studentNumber String    @map("student_number")
+  studentNumber String    @unique @map("student_number")
   gender        Gender    @map("gender")
   role          Role      @default(USER)
   deletedAt     DateTime? @map("deleted_at")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  usingMachines     UsingMachine[]
-  userRefreshTokens UserRefreshToken[]
-  userConsents      UserConsent[]
-  auditLogs         AuditLog[]
+  usingMachines            UsingMachine[]
+  userRefreshTokens        UserRefreshToken[]
+  userConsents             UserConsent[]
+  auditLogs                AuditLog[]
   pushSubscriptions        UserPushSubscription[]
   laundryRoomSubscriptions LaundryRoomSubscription[]
   machineSubscriptions     MachineSubscription[]
@@ -124,7 +122,7 @@ model Machine {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  currentUsage UsingMachine?
+  currentUsage  UsingMachine?
   subscriptions MachineSubscription[]
 
   @@unique([location, gender, type, index])
