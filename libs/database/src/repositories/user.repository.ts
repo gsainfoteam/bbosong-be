@@ -1,6 +1,7 @@
 import { Loggable } from '@lib/logger';
 import * as crypto from 'crypto';
 import {
+  HttpException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -79,6 +80,9 @@ export class UserRepository {
             },
           })
     ).catch((error) => {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2002') {
           this.logger.debug(`Conflict studentHash: ${error.message}`);

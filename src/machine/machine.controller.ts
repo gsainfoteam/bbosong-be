@@ -7,7 +7,14 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { UserGuard } from '../auth/guard/user.guard';
 import { MachineService } from './machine.service';
 import { GetLaundryRoomStatusReqDto } from './dto/req/get-laundry-room-status-req.dto';
@@ -42,6 +49,14 @@ export class MachineController {
   @ApiBearerAuth('machine')
   @UseGuards(UserGuard)
   @Post()
+  @ApiCreatedResponse({
+    type: CreateMachineResDto,
+    description: 'Machine created successfully.',
+  })
+  @ApiConflictResponse({
+    description: 'Machine index already exists in the room.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async createMachine(
     @Query() query: CreateMachineReqDto,
   ): Promise<CreateMachineResDto> {
@@ -55,6 +70,14 @@ export class MachineController {
   @ApiBearerAuth('machine')
   @UseGuards(UserGuard)
   @Post('/multiple')
+  @ApiCreatedResponse({
+    type: CreateMultipleMachinesResDto,
+    description: 'Multiple machines created successfully.',
+  })
+  @ApiConflictResponse({
+    description: 'One or more machine indices already exist.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async createMultipleMachines(
     @Query() query: CreateMultipleMachinesReqDto,
   ): Promise<CreateMultipleMachinesResDto> {
@@ -65,6 +88,9 @@ export class MachineController {
   @ApiBearerAuth('machine')
   @UseGuards(UserGuard)
   @Delete(':uuid')
+  @ApiOkResponse({ description: 'Machine deleted successfully.' })
+  @ApiNotFoundResponse({ description: 'Machine not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async deleteMachine(@Param('uuid') uuid: string) {
     await this.machineService.deleteMachine(uuid);
   }
