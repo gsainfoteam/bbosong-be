@@ -25,8 +25,10 @@ COPY --from=prod /usr/src/app/node_modules ./node_modules
 COPY --from=builder ./usr/src/app/.env ./.env
 COPY --from=builder ./usr/src/app/dist ./dist
 COPY --from=builder ./usr/src/app/package.json ./package.json
+COPY --from=builder ./usr/src/app/prisma ./prisma
+COPY --from=builder ./usr/src/app/generated ./generated
 
 # run the app
 USER bun
 EXPOSE 3000/tcp
-ENTRYPOINT [ "bun", "run", "start:prod" ]
+ENTRYPOINT [ "sh", "-c", "bunx --no-install prisma migrate deploy && exec bun run start:prod" ]

@@ -117,7 +117,9 @@ model Machine {
   location    Location    @map("location")
   gender      Gender      @map("gender")
   index       Int         @map("index")
-  isAvailable Boolean     @default(true) @map("isAvailable")
+  isAvailable Boolean     @default(true) @map("is_available")
+  posX        Int?        @map("pos_x")
+  posY        Int?        @map("pos_y")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
