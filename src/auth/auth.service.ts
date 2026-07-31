@@ -39,6 +39,7 @@ import {
 } from './types/consent.type';
 import { IssueTokenType } from './types/jwt-token.type';
 import { UserLoginDto } from './dto/req/user-login.dto';
+import { UserResDto } from './dto/res/user-res.dto';
 import { ConsentRequiredException } from './exceptions/consent-required.exception';
 import { AuditLogService } from '@lib/audit-log';
 
@@ -474,5 +475,17 @@ export class AuthService {
 
   async userLogout(userUuid: string): Promise<void> {
     await this.userRefreshTokenRepository.deleteAllUserRefreshTokens(userUuid);
+  }
+
+  getMe(user: User): UserResDto {
+    // Map the database user entity to the client-facing response DTO
+    return {
+      uuid: user.uuid,
+      name: user.name,
+      email: user.email,
+      studentNumber: user.studentNumber,
+      gender: user.gender,
+      role: user.role,
+    };
   }
 }

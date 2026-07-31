@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Post,
   Req,
   Res,
@@ -8,12 +9,19 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiSecurity,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { User } from 'generated/prisma/client';
 import { AuthService } from './auth.service';
 import { GetUser } from './decorator/get-user.decorator';
 import { UserLoginDto } from './dto/req/user-login.dto';
 import { JwtToken } from './dto/res/jwt-token.dto';
+import { UserResDto } from './dto/res/user-res.dto';
 import { UserGuard } from './guard/user.guard';
 
 @Controller('auth')
@@ -22,6 +30,14 @@ export class AuthController {
 
   @Post('login')
   @ApiSecurity('oauth2')
+  @ApiCreatedResponse({
+    type: JwtToken,
+    description:
+      'User logged in successfully and refresh token cookie was set.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid authorization header or token.',
+  })
   async login(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -45,6 +61,11 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @ApiCreatedResponse({
+    type: JwtToken,
+    description: 'Access token refreshed successfully.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Invalid or expired refresh token.' })
   async refresh(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -68,6 +89,10 @@ export class AuthController {
   @Post('logout')
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
+  @ApiCreatedResponse({
+    description: 'User logged out successfully and cookie was cleared.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async logout(
     @GetUser() user: User,
     @Res({ passthrough: true }) res: Response,
@@ -76,5 +101,17 @@ export class AuthController {
     res.clearCookie('refresh_token', {
       path: '/auth',
     });
+  }
+
+  @Get('me')
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiOkResponse({
+    type: UserResDto,
+    description: 'Successfully retrieved current authenticated user profile.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  getMe(@GetUser() user: User): UserResDto {
+    return this.authService.getMe(user);
   }
 }
