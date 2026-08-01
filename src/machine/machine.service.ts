@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { Gender, Machine } from 'generated/prisma/client';
+import { Gender, Machine, MachinePower } from 'generated/prisma/client';
 import { MachineRepository } from '@lib/database/repositories/machine-repository';
 import { LaundryRoomSummary } from '@lib/database/types/machine.type';
 import {
   CreateMachineReqDto,
   CreateMultipleMachinesReqDto,
 } from './dto/req/create-machine-req.dto';
+import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 
 @Injectable()
 export class MachineService {
@@ -31,7 +32,19 @@ export class MachineService {
     );
   }
 
+  async getMachines(): Promise<Machine[]> {
+    return await this.machineRepository.getMachines();
+  }
+
   async deleteMachine(uuid: string) {
     await this.machineRepository.deleteMachine(uuid);
+  }
+
+  async recordMachinePower(uuid: string, { power }: CreatePowerReqDto) {
+    await this.machineRepository.recordMachinePower(uuid, power);
+  }
+
+  async getMachinePower(uuid: string): Promise<MachinePower[]> {
+    return await this.machineRepository.getMachinePowerInLastHour(uuid);
   }
 }
