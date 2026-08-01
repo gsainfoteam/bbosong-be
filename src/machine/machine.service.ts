@@ -37,6 +37,8 @@ export class MachineService {
     return await this.machineRepository.getMachines();
   }
 
+  async updateMachine(uuid: string, body: UpdateMachineReqDto) {}
+
   async deleteMachine(uuid: string) {
     await this.machineRepository.deleteMachine(uuid);
   }
@@ -48,6 +50,4 @@ export class MachineService {
   async getMachinePower(uuid: string): Promise<MachinePower[]> {
     return await this.machineRepository.getMachinePowerInLastHour(uuid);
   }
-
-  async updateMachine(uuid: string, body: UpdateMachineReqDto) {}
 }

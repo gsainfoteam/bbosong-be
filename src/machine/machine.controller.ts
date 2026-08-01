@@ -20,7 +20,6 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { AdminGuard, UserGuard } from '../auth/guard/user.guard';
-import { UserGuard } from '../auth/guard/user.guard';
 import { MachinePowerApiKeyGuard } from '../auth/guard/machine-power-api-key.guard';
 import { MachineService } from './machine.service';
 import { GetLaundryRoomStatusReqDto } from './dto/req/get-laundry-room-status-req.dto';
