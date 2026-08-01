@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DatabaseService } from '@lib/database/database.service';
-import { Gender, Machine, Prisma } from 'generated/prisma/client';
+import { Gender, Machine, MachinePower, Prisma } from 'generated/prisma/client';
 import { LaundryRoomSummary } from '@lib/database/types/machine.type';
 import {
   CreateMachineReqDto,
@@ -110,6 +110,22 @@ export class MachineRepository {
     return machines.sort((a, b) => a.index - b.index);
   }
 
+  async getMachines(): Promise<Machine[]> {
+    return await this.databaseService.machine
+      .findMany({
+        orderBy: [
+          { location: 'asc' },
+          { gender: 'asc' },
+          { type: 'asc' },
+          { index: 'asc' },
+        ],
+      })
+      .catch((error) => {
+        this.logger.error(`getMachines error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
+  }
+
   async deleteMachine(uuid: string): Promise<void> {
     await this.databaseService.machine
       .delete({
@@ -127,6 +143,42 @@ export class MachineRepository {
         }
         this.logger.error(`deleteMachine error: ${error}`);
         throw new InternalServerErrorException('Unknown Error');
+      });
+  }
+
+  async recordMachinePower(uuid: string, power: number): Promise<void> {
+    await this.databaseService.machinePower
+      .create({
+        data: {
+          machineUuid: uuid,
+          power,
+        },
+      })
+      .catch((error) => {
+        this.logger.error(`recordMachinePower error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
+  }
+
+  async getMachinePowerInLastHour(uuid: string): Promise<MachinePower[]> {
+    // Calculate timestamp for 1 hour ago
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+    return await this.databaseService.machinePower
+      .findMany({
+        where: {
+          machineUuid: uuid,
+          recordedAt: {
+            gte: oneHourAgo,
+          },
+        },
+        orderBy: {
+          recordedAt: 'asc',
+        },
+      })
+      .catch((error) => {
+        this.logger.error(`getMachinePowerInLastHour error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
       });
   }
 }

@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -11,11 +12,13 @@ import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { UserGuard } from '../auth/guard/user.guard';
+import { MachinePowerApiKeyGuard } from '../auth/guard/machine-power-api-key.guard';
 import { MachineService } from './machine.service';
 import { GetLaundryRoomStatusReqDto } from './dto/req/get-laundry-room-status-req.dto';
 import { GetLaundryRoomStatusResDto } from './dto/res/get-laundry-room-status-res.dto';
@@ -27,12 +30,15 @@ import {
   CreateMachineResDto,
   CreateMultipleMachinesResDto,
 } from './dto/res/create-machine-res.dto';
+import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
+import { GetMachineResDto } from './dto/res/get-machine-res.dto';
+import { GetMachinePowerResDto } from './dto/res/get-machine-power-res.dto';
 
+@ApiBearerAuth('user')
 @Controller('machine')
 export class MachineController {
   constructor(private readonly machineService: MachineService) {}
 
-  @ApiBearerAuth('machine')
   @UseGuards(UserGuard)
   @Get('summary')
   @ApiOkResponse({
@@ -46,7 +52,6 @@ export class MachineController {
     return await this.machineService.laundryRoomStatusByGender(query.gender);
   }
 
-  @ApiBearerAuth('machine')
   @UseGuards(UserGuard)
   @Post()
   @ApiCreatedResponse({
@@ -67,7 +72,6 @@ export class MachineController {
     };
   }
 
-  @ApiBearerAuth('machine')
   @UseGuards(UserGuard)
   @Post('/multiple')
   @ApiCreatedResponse({
@@ -85,7 +89,18 @@ export class MachineController {
     return { uuids: machines.map((item) => item.uuid) };
   }
 
-  @ApiBearerAuth('machine')
+  @UseGuards(UserGuard)
+  @Get()
+  @ApiOkResponse({
+    type: GetMachineResDto,
+    isArray: true,
+    description: 'Successfully retrieved all machines.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async getMachines(): Promise<GetMachineResDto[]> {
+    return await this.machineService.getMachines();
+  }
+
   @UseGuards(UserGuard)
   @Delete(':uuid')
   @ApiOkResponse({ description: 'Machine deleted successfully.' })
@@ -93,5 +108,37 @@ export class MachineController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async deleteMachine(@Param('uuid') uuid: string) {
     await this.machineService.deleteMachine(uuid);
+  }
+
+  @UseGuards(MachinePowerApiKeyGuard)
+  @Post('/power/:uuid')
+  @ApiHeader({
+    name: 'x-api-key',
+    description: 'API key for machine power sensors',
+    required: true,
+  })
+  @ApiCreatedResponse({ description: 'Machine power recorded successfully.' })
+  @ApiNotFoundResponse({ description: 'Machine not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async recordMachinePower(
+    @Param('uuid') uuid: string,
+    @Body() body: CreatePowerReqDto,
+  ) {
+    await this.machineService.recordMachinePower(uuid, body);
+  }
+
+  @UseGuards(UserGuard)
+  @Get('/power/:uuid')
+  @ApiOkResponse({
+    type: GetMachinePowerResDto,
+    isArray: true,
+    description:
+      'Successfully retrieved machine power records for the last 1 hour.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async getMachinePower(
+    @Param('uuid') uuid: string,
+  ): Promise<GetMachinePowerResDto[]> {
+    return await this.machineService.getMachinePower(uuid);
   }
 }

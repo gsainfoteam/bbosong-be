@@ -126,6 +126,7 @@ model Machine {
 
   currentUsage  UsingMachine?
   subscriptions MachineSubscription[]
+  power         MachinePower[]
 
   @@unique([location, gender, type, index])
   @@index([location, gender])
@@ -145,6 +146,18 @@ model UsingMachine {
 
   @@index([userUuid])
   @@map("using_machine")
+}
+
+model MachinePower {
+  uuid        String   @id @default(uuid()) @db.Uuid
+  machineUuid String   @map("machine_uuid") @db.Uuid
+  power       Float    @map("power")
+  recordedAt  DateTime @default(now()) @map("recorded_at")
+
+  machine Machine @relation(fields: [machineUuid], references: [uuid], onDelete: Cascade)
+
+  @@index([machineUuid])
+  @@map("machine_power")
 }
 
 model UserPushSubscription {
