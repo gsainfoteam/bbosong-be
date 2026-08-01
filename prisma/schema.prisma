@@ -156,7 +156,7 @@ model MachinePower {
 
   machine Machine @relation(fields: [machineUuid], references: [uuid], onDelete: Cascade)
 
-  @@index([machineUuid])
+  @@index([machineUuid, recordedAt])
   @@map("machine_power")
 }
 

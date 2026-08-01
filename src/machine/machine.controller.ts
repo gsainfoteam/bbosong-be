@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UseGuards,
@@ -34,11 +35,11 @@ import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 import { GetMachineResDto } from './dto/res/get-machine-res.dto';
 import { GetMachinePowerResDto } from './dto/res/get-machine-power-res.dto';
 
-@ApiBearerAuth('user')
 @Controller('machine')
 export class MachineController {
   constructor(private readonly machineService: MachineService) {}
 
+  @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @Get('summary')
   @ApiOkResponse({
@@ -52,6 +53,7 @@ export class MachineController {
     return await this.machineService.laundryRoomStatusByGender(query.gender);
   }
 
+  @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @Post()
   @ApiCreatedResponse({
@@ -72,6 +74,7 @@ export class MachineController {
     };
   }
 
+  @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @Post('/multiple')
   @ApiCreatedResponse({
@@ -89,6 +92,7 @@ export class MachineController {
     return { uuids: machines.map((item) => item.uuid) };
   }
 
+  @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @Get()
   @ApiOkResponse({
@@ -101,12 +105,13 @@ export class MachineController {
     return await this.machineService.getMachines();
   }
 
+  @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @Delete(':uuid')
   @ApiOkResponse({ description: 'Machine deleted successfully.' })
   @ApiNotFoundResponse({ description: 'Machine not found.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
-  async deleteMachine(@Param('uuid') uuid: string) {
+  async deleteMachine(@Param('uuid', ParseUUIDPipe) uuid: string) {
     await this.machineService.deleteMachine(uuid);
   }
 
@@ -121,12 +126,13 @@ export class MachineController {
   @ApiNotFoundResponse({ description: 'Machine not found.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async recordMachinePower(
-    @Param('uuid') uuid: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
     @Body() body: CreatePowerReqDto,
   ) {
     await this.machineService.recordMachinePower(uuid, body);
   }
 
+  @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @Get('/power/:uuid')
   @ApiOkResponse({
@@ -137,7 +143,7 @@ export class MachineController {
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async getMachinePower(
-    @Param('uuid') uuid: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
   ): Promise<GetMachinePowerResDto[]> {
     return await this.machineService.getMachinePower(uuid);
   }

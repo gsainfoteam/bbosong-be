@@ -1,6 +1,6 @@
 import { Gender, Location, MachineType } from 'generated/prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsNumber, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { IsGreaterThan } from 'src/common/decorator/is-greater-than.decorator';
 
@@ -77,7 +77,7 @@ export class CreateMultipleMachinesReqDto {
     required: true,
   })
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(1)
   startIndex: number;
 
@@ -87,7 +87,7 @@ export class CreateMultipleMachinesReqDto {
     required: true,
   })
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Max(30)
   @IsGreaterThan('startIndex')
   endIndex: number;

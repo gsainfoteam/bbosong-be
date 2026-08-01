@@ -155,6 +155,12 @@ export class MachineRepository {
         },
       })
       .catch((error) => {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2003'
+        ) {
+          throw new NotFoundException('Machine not found.');
+        }
         this.logger.error(`recordMachinePower error: ${error}`);
         throw new InternalServerErrorException('Database Error');
       });
@@ -177,6 +183,12 @@ export class MachineRepository {
         },
       })
       .catch((error) => {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2003'
+        ) {
+          throw new NotFoundException('Machine not found.');
+        }
         this.logger.error(`getMachinePowerInLastHour error: ${error}`);
         throw new InternalServerErrorException('Database Error');
       });
