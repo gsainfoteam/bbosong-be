@@ -6,6 +6,7 @@ import {
   CreateMachineReqDto,
   CreateMultipleMachinesReqDto,
 } from './dto/req/create-machine-req.dto';
+import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 
 @Injectable()
 export class MachineService {
@@ -34,4 +35,6 @@ export class MachineService {
   async deleteMachine(uuid: string) {
     await this.machineRepository.deleteMachine(uuid);
   }
+
+  async updateMachine(uuid: string, body: UpdateMachineReqDto) {}
 }

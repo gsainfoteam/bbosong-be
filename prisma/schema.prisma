@@ -22,6 +22,7 @@ enum ConsentType {
 
 enum Role {
   USER
+  ADMIN
 
   @@map("role")
 }

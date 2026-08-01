@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -15,7 +17,7 @@ import {
   ApiOkResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { UserGuard } from '../auth/guard/user.guard';
+import { AdminGuard, UserGuard } from '../auth/guard/user.guard';
 import { MachineService } from './machine.service';
 import { GetLaundryRoomStatusReqDto } from './dto/req/get-laundry-room-status-req.dto';
 import { GetLaundryRoomStatusResDto } from './dto/res/get-laundry-room-status-res.dto';
@@ -27,6 +29,7 @@ import {
   CreateMachineResDto,
   CreateMultipleMachinesResDto,
 } from './dto/res/create-machine-res.dto';
+import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 
 @Controller('machine')
 export class MachineController {
@@ -93,5 +96,18 @@ export class MachineController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async deleteMachine(@Param('uuid') uuid: string) {
     await this.machineService.deleteMachine(uuid);
+  }
+
+  @ApiBearerAuth('machine')
+  @UseGuards(AdminGuard)
+  @Patch(':uuid')
+  @ApiOkResponse({ description: 'Machine updated successfully.' })
+  @ApiNotFoundResponse({ description: 'Machine not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async updateMachine(
+    @Param('uuid') uuid: string,
+    @Body() body: UpdateMachineReqDto,
+  ): Promise<void> {
+    await this.machineService.updateMachine(uuid, body);
   }
 }

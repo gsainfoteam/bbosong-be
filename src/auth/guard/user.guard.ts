@@ -3,3 +3,4 @@ import { AuthGuard } from '@nestjs/passport';
 
 @Injectable()
 export class UserGuard extends AuthGuard('user') {}
+export class AdminGuard extends AuthGuard('admin') {}
