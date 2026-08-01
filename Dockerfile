@@ -31,4 +31,4 @@ COPY --from=builder ./usr/src/app/generated ./generated
 # run the app
 USER bun
 EXPOSE 3000/tcp
-ENTRYPOINT [ "sh", "-c", "bunx --no-install prisma migrate deploy && exec bun run start:prod" ]
+ENTRYPOINT [ "bun", "run", "start:prod" ]
