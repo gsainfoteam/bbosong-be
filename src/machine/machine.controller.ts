@@ -120,7 +120,7 @@ export class MachineController {
     await this.machineService.deleteMachine(uuid);
   }
 
-  @ApiBearerAuth('machine')
+  @ApiBearerAuth('user')
   @UseGuards(AdminGuard)
   @Patch(':uuid')
   @ApiOkResponse({ description: 'Machine updated successfully.' })
