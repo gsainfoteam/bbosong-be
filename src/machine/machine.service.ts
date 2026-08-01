@@ -13,6 +13,7 @@ import {
   CreateMultipleMachinesReqDto,
 } from './dto/req/create-machine-req.dto';
 import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
+import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 
 @Injectable()
 export class MachineService {
@@ -131,4 +132,6 @@ export class MachineService {
       machineUuid,
     );
   }
+
+  async updateMachine(uuid: string, body: UpdateMachineReqDto) {}
 }
