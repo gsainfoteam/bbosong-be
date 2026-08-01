@@ -165,7 +165,7 @@ CREATE UNIQUE INDEX "using_machine_machine_uuid_key" ON "using_machine"("machine
 CREATE INDEX "using_machine_user_uuid_idx" ON "using_machine"("user_uuid");
 
 -- CreateIndex
-CREATE INDEX "machine_power_machine_uuid_idx" ON "machine_power"("machine_uuid");
+CREATE INDEX "machine_power_machine_uuid_recorded_at_idx" ON "machine_power"("machine_uuid", "recorded_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "user_push_subscription_endpoint_key" ON "user_push_subscription"("endpoint");
