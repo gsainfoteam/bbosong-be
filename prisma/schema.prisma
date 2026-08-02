@@ -64,7 +64,6 @@ model User {
   auditLogs                AuditLog[]
   pushSubscriptions        UserPushSubscription[]
   laundryRoomSubscriptions LaundryRoomSubscription[]
-  machineSubscriptions     MachineSubscription[]
 
   @@map("user")
 }
@@ -124,9 +123,8 @@ model Machine {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  currentUsage  UsingMachine?
-  subscriptions MachineSubscription[]
-  power         MachinePower[]
+  currentUsage UsingMachine?
+  power        MachinePower[]
 
   @@unique([location, gender, type, index])
   @@index([location, gender])
@@ -134,15 +132,16 @@ model Machine {
 }
 
 model UsingMachine {
-  uuid            String   @id @default(uuid()) @db.Uuid
-  machineUuid     String   @unique @map("machine_uuid") @db.Uuid
-  userUuid        String   @map("user_uuid") @db.Uuid
-  startedAt       DateTime @default(now()) @map("started_at")
-  durationMinutes Int      @map("duration_minutes")
+  uuid               String   @id @default(uuid()) @db.Uuid
+  machineUuid        String   @unique @map("machine_uuid") @db.Uuid
+  userUuid           String?  @map("user_uuid") @db.Uuid
+  notifyOnCompletion Boolean  @default(true) @map("notify_on_completion")
+  startedAt          DateTime @default(now()) @map("started_at")
+  durationMinutes    Int      @map("duration_minutes")
 
   machine Machine @relation(fields: [machineUuid], references: [uuid], onDelete: Cascade)
 
-  user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
+  user User? @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
 
   @@index([userUuid])
   @@map("using_machine")
@@ -185,21 +184,8 @@ model LaundryRoomSubscription {
 
   user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
 
+  @@unique([userUuid, location, gender, type])
   @@index([userUuid])
   @@index([location, gender, type])
   @@map("laundry_room_subscription")
-}
-
-model MachineSubscription {
-  uuid        String   @id @default(uuid()) @db.Uuid
-  userUuid    String   @map("user_uuid") @db.Uuid
-  machineUuid String   @map("machine_uuid") @db.Uuid
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  user    User    @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
-  machine Machine @relation(fields: [machineUuid], references: [uuid], onDelete: Cascade)
-
-  @@index([userUuid])
-  @@index([machineUuid])
-  @@map("machine_subscription")
 }

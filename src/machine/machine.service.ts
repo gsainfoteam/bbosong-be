@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Gender, Machine, MachinePower } from 'generated/prisma/client';
-import { MachineRepository } from '@lib/database/repositories/machine-repository';
+import { MachineRepository } from '@lib/database/repositories/machine.repository';
 import { LaundryRoomSummary } from '@lib/database/types/machine.type';
 import {
   CreateMachineReqDto,
