@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import { SubscribeReqDto } from './dto/req/subscribe-req.dto';
+import { Gender, Location, MachineType } from 'generated/prisma/client';
 
 @Injectable()
 export class NotificationService {
@@ -13,7 +14,7 @@ export class NotificationService {
     dto: SubscribeReqDto,
     userAgent?: string,
   ) {
-    return this.notificationRepository.registerPush(
+    return await this.notificationRepository.registerPush(
       userUuid,
       dto.endpoint,
       dto.keys.p256dh,
@@ -26,10 +27,31 @@ export class NotificationService {
     return await this.notificationRepository.unregisterPush(endpoint);
   }
 
-  async enableMachineNotification(userUuid: string, machineUuid: string) {
-    return await this.notificationRepository.enableMachineNotification(
+  async createLaundryRoomSubscription(
+    userUuid: string,
+    location: Location,
+    gender: Gender,
+    type: MachineType,
+  ) {
+    return await this.notificationRepository.createLaundryRoomSubscription(
       userUuid,
-      machineUuid,
+      location,
+      gender,
+      type,
+    );
+  }
+
+  async deleteLaundryRoomSubscription(
+    userUuid: string,
+    location: Location,
+    gender: Gender,
+    type: MachineType,
+  ) {
+    return await this.notificationRepository.deleteLaundryRoomSubscription(
+      userUuid,
+      location,
+      gender,
+      type,
     );
   }
 }

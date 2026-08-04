@@ -5,7 +5,7 @@ export class CreatePowerReqDto {
   @IsDefined()
   @IsNotEmpty()
   @Transform(({ value }) =>
-    value === null || value === '' ? NaN : Number(value),
+    value === null || value === '' ? Number.NaN : Number(value),
   )
   @IsNumber()
   @Min(0)

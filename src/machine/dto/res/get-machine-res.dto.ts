@@ -1,5 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Gender, Location, MachineType } from 'generated/prisma/client';
+import {
+  Gender,
+  Location,
+  MachineStatus,
+  MachineType,
+} from 'generated/prisma/client';
 
 export class GetMachineResDto {
   @ApiProperty({
@@ -54,4 +59,10 @@ export class GetMachineResDto {
     nullable: true,
   })
   posY: number | null;
+
+  @ApiProperty({
+    description: 'Current status of the machine',
+    example: MachineStatus.IDLE,
+  })
+  status: MachineStatus;
 }

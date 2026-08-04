@@ -1,5 +1,5 @@
 import { Loggable } from '@lib/logger';
-import * as crypto from 'crypto';
+import * as crypto from 'node:crypto';
 import {
   HttpException,
   Injectable,
@@ -11,7 +11,7 @@ import {
 import { DatabaseService } from '../database.service';
 import { Gender, Prisma, Role, User } from 'generated/prisma/client';
 import { PrismaTransaction } from '../types';
-import { GenderRequiredException } from '../../../../src/auth/exceptions/gender-required.exception';
+import { GenderRequiredException } from 'src/auth/exceptions/gender-required.exception';
 
 @Loggable()
 @Injectable()

@@ -17,7 +17,7 @@ import {
   TimeoutError,
 } from 'rxjs';
 import { AxiosError } from 'axios';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 
 import { InfoteamAccountService } from '@lib/infoteam-account';
 import {
@@ -267,7 +267,7 @@ export class AuthService {
     activePolicyVersion: string,
   ): ConsentRequirement {
     const needsConsent: boolean =
-      !latestConsent || latestConsent.version !== activePolicyVersion;
+      latestConsent?.version !== activePolicyVersion;
     const hasNeverConsented: boolean = !latestConsent;
 
     return {
@@ -279,12 +279,7 @@ export class AuthService {
   }
 
   private validateConsentData(
-    {
-      agreedToTerms,
-      agreedToPrivacy,
-      termsVersion,
-      privacyVersion,
-    }: ConsentData,
+    consentData: ConsentData,
     termsRequirement: ConsentRequirement,
     privacyRequirement: ConsentRequirement,
   ): void {
@@ -292,30 +287,37 @@ export class AuthService {
       termsRequirement.hasNeverConsented ||
       privacyRequirement.hasNeverConsented;
 
-    const missingConsents: {
-      terms?: { currentVersion?: string; requiredVersion: string };
-      privacy?: { currentVersion?: string; requiredVersion: string };
-    } = {};
+    this.checkMissingConsents(
+      consentData,
+      termsRequirement,
+      privacyRequirement,
+      isFirstLogin,
+    );
+    this.checkConsentVersionMismatch(
+      consentData,
+      termsRequirement,
+      privacyRequirement,
+      isFirstLogin,
+    );
+  }
 
-    if (termsRequirement.needsConsent) {
-      if (!agreedToTerms || !termsVersion) {
-        missingConsents.terms = {
-          currentVersion: termsRequirement.currentVersion,
-          requiredVersion: termsRequirement.requiredVersion,
-        };
-      }
-    }
+  private checkMissingConsents(
+    {
+      agreedToTerms,
+      agreedToPrivacy,
+      termsVersion,
+      privacyVersion,
+    }: ConsentData,
+    termsReq: ConsentRequirement,
+    privacyReq: ConsentRequirement,
+    isFirstLogin: boolean,
+  ): void {
+    const missingTerms =
+      termsReq.needsConsent && (!agreedToTerms || !termsVersion);
+    const missingPrivacy =
+      privacyReq.needsConsent && (!agreedToPrivacy || !privacyVersion);
 
-    if (privacyRequirement.needsConsent) {
-      if (!agreedToPrivacy || !privacyVersion) {
-        missingConsents.privacy = {
-          currentVersion: privacyRequirement.currentVersion,
-          requiredVersion: privacyRequirement.requiredVersion,
-        };
-      }
-    }
-
-    if (missingConsents.terms || missingConsents.privacy) {
+    if (missingTerms || missingPrivacy) {
       throw new ConsentRequiredException(
         isFirstLogin
           ? 'Consent required for first login'
@@ -323,60 +325,46 @@ export class AuthService {
         isFirstLogin ? 'CONSENT_REQUIRED' : 'CONSENT_UPDATE_REQUIRED',
         {
           terms: {
-            currentVersion: termsRequirement.currentVersion,
-            requiredVersion: termsRequirement.requiredVersion,
+            currentVersion: termsReq.currentVersion,
+            requiredVersion: termsReq.requiredVersion,
           },
           privacy: {
-            currentVersion: privacyRequirement.currentVersion,
-            requiredVersion: privacyRequirement.requiredVersion,
+            currentVersion: privacyReq.currentVersion,
+            requiredVersion: privacyReq.requiredVersion,
           },
         },
       );
     }
+  }
 
-    const versionErrors: {
-      terms?: { currentVersion?: string; requiredVersion: string };
-      privacy?: { currentVersion?: string; requiredVersion: string };
-    } = {};
+  private checkConsentVersionMismatch(
+    { termsVersion, privacyVersion }: ConsentData,
+    termsReq: ConsentRequirement,
+    privacyReq: ConsentRequirement,
+    isFirstLogin: boolean,
+  ): void {
+    const invalidTerms =
+      termsReq.needsConsent && termsVersion !== termsReq.requiredVersion;
+    const invalidPrivacy =
+      privacyReq.needsConsent && privacyVersion !== privacyReq.requiredVersion;
 
-    if (
-      termsRequirement.needsConsent &&
-      termsVersion !== termsRequirement.requiredVersion
-    ) {
-      versionErrors.terms = {
-        currentVersion: termsRequirement.currentVersion,
-        requiredVersion: termsRequirement.requiredVersion,
-      };
-    }
-
-    if (
-      privacyRequirement.needsConsent &&
-      privacyVersion !== privacyRequirement.requiredVersion
-    ) {
-      versionErrors.privacy = {
-        currentVersion: privacyRequirement.currentVersion,
-        requiredVersion: privacyRequirement.requiredVersion,
-      };
-    }
-
-    if (versionErrors.terms || versionErrors.privacy) {
-      const errorCode = isFirstLogin
-        ? 'CONSENT_REQUIRED'
-        : 'CONSENT_UPDATE_REQUIRED';
-      const errorMessage = isFirstLogin
-        ? 'Invalid consent version for first login'
-        : 'Invalid consent version for updated policy';
-
-      throw new ConsentRequiredException(errorMessage, errorCode, {
-        terms: {
-          currentVersion: termsRequirement.currentVersion,
-          requiredVersion: termsRequirement.requiredVersion,
+    if (invalidTerms || invalidPrivacy) {
+      throw new ConsentRequiredException(
+        isFirstLogin
+          ? 'Invalid consent version for first login'
+          : 'Invalid consent version for updated policy',
+        isFirstLogin ? 'CONSENT_REQUIRED' : 'CONSENT_UPDATE_REQUIRED',
+        {
+          terms: {
+            currentVersion: termsReq.currentVersion,
+            requiredVersion: termsReq.requiredVersion,
+          },
+          privacy: {
+            currentVersion: privacyReq.currentVersion,
+            requiredVersion: privacyReq.requiredVersion,
+          },
         },
-        privacy: {
-          currentVersion: privacyRequirement.currentVersion,
-          requiredVersion: privacyRequirement.requiredVersion,
-        },
-      });
+      );
     }
   }
 

@@ -47,6 +47,14 @@ enum MachineType {
   @@map("machine_type")
 }
 
+enum MachineStatus {
+  IDLE
+  WASH
+  RINSE
+  SPIN
+  DRY
+}
+
 model User {
   uuid          String    @id @db.Uuid
   name          String
@@ -111,14 +119,15 @@ model AuditLog {
 }
 
 model Machine {
-  uuid        String      @id @default(uuid()) @db.Uuid
-  type        MachineType @map("type")
-  location    Location    @map("location")
-  gender      Gender      @map("gender")
-  index       Int         @map("index")
-  isAvailable Boolean     @default(true) @map("is_available")
-  posX        Int?        @map("pos_x")
-  posY        Int?        @map("pos_y")
+  uuid        String        @id @default(uuid()) @db.Uuid
+  type        MachineType   @map("type")
+  location    Location      @map("location")
+  gender      Gender        @map("gender")
+  index       Int           @map("index")
+  isAvailable Boolean       @default(true) @map("is_available")
+  posX        Int?          @map("pos_x")
+  posY        Int?          @map("pos_y")
+  status      MachineStatus @default(IDLE) @map("status")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -137,7 +146,7 @@ model UsingMachine {
   userUuid           String?  @map("user_uuid") @db.Uuid
   notifyOnCompletion Boolean  @default(true) @map("notify_on_completion")
   startedAt          DateTime @default(now()) @map("started_at")
-  durationMinutes    Int      @map("duration_minutes")
+  durationMinutes    Int      @default(0) @map("duration_minutes")
 
   machine Machine @relation(fields: [machineUuid], references: [uuid], onDelete: Cascade)
 

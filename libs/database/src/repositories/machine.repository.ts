@@ -167,7 +167,6 @@ export class MachineRepository {
   }
 
   async getMachinePowerInLastHour(uuid: string): Promise<MachinePower[]> {
-    // Calculate timestamp for 1 hour ago
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
     return await this.databaseService.machinePower
