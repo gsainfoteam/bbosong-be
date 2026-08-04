@@ -8,5 +8,6 @@ import { AuditLogModule } from '@lib/audit-log';
   imports: [DatabaseModule, AuditLogModule],
   controllers: [MachineController],
   providers: [MachineService],
+  exports: [MachineService],
 })
 export class MachineModule {}

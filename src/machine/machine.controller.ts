@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -20,6 +21,8 @@ import {
 } from '@nestjs/swagger';
 import { UserGuard } from '../auth/guard/user.guard';
 import { MachinePowerApiKeyGuard } from '../auth/guard/machine-power-api-key.guard';
+import { GetUser } from '../auth/decorator/get-user.decorator';
+import { User } from 'generated/prisma/client';
 import { MachineService } from './machine.service';
 import { GetLaundryRoomStatusReqDto } from './dto/req/get-laundry-room-status-req.dto';
 import { GetLaundryRoomStatusResDto } from './dto/res/get-laundry-room-status-res.dto';
@@ -34,6 +37,7 @@ import {
 import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 import { GetMachineResDto } from './dto/res/get-machine-res.dto';
 import { GetMachinePowerResDto } from './dto/res/get-machine-power-res.dto';
+import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto';
 
 @Controller('machine')
 export class MachineController {
@@ -116,7 +120,7 @@ export class MachineController {
   }
 
   @UseGuards(MachinePowerApiKeyGuard)
-  @Post('/power/:uuid')
+  @Post('/:uuid/power')
   @ApiHeader({
     name: 'x-api-key',
     description: 'API key for machine power sensors',
@@ -134,7 +138,7 @@ export class MachineController {
 
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @Get('/power/:uuid')
+  @Get('/:uuid/power')
   @ApiOkResponse({
     type: GetMachinePowerResDto,
     isArray: true,
@@ -146,5 +150,71 @@ export class MachineController {
     @Param('uuid', ParseUUIDPipe) uuid: string,
   ): Promise<GetMachinePowerResDto[]> {
     return await this.machineService.getMachinePower(uuid);
+  }
+
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @Post('/:uuid/register')
+  @ApiOkResponse({
+    description:
+      'Successfully registered machine usage and enabled notification.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Machine is not running or operating user mismatch.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async registerMachineUsage(
+    @Param('uuid', ParseUUIDPipe) machineUuid: string,
+    @GetUser() user: User,
+  ) {
+    await this.machineService.enableMachineNotification(user.uuid, machineUuid);
+    return { success: true };
+  }
+
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @Patch('/:uuid/notification')
+  @ApiOkResponse({
+    description: 'Successfully toggled machine completion notification.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Machine is not running or operating user mismatch.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async toggleMachineNotification(
+    @Param('uuid', ParseUUIDPipe) machineUuid: string,
+    @GetUser() user: User,
+    @Body() body: ToggleNotificationReqDto,
+  ) {
+    if (body.notifyOnCompletion) {
+      await this.machineService.enableMachineNotification(
+        user.uuid,
+        machineUuid,
+      );
+    } else {
+      await this.machineService.disableMachineNotification(
+        user.uuid,
+        machineUuid,
+      );
+    }
+    return { success: true };
+  }
+
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @Delete('/:uuid/register')
+  @ApiOkResponse({
+    description: 'Successfully unregistered machine usage (unlinked user).',
+  })
+  @ApiNotFoundResponse({
+    description: 'Machine is not running or operating user mismatch.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async unregisterMachineUsage(
+    @Param('uuid', ParseUUIDPipe) machineUuid: string,
+    @GetUser() user: User,
+  ) {
+    await this.machineService.unlinkUserFromMachine(user.uuid, machineUuid);
+    return { success: true };
   }
 }

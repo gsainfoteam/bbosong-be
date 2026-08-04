@@ -23,11 +23,13 @@ export const makeApp = async () => {
 
   app.use(cookieParser());
 
-  const corsWhitelist = configService
-    .getOrThrow<string>('CORS_ORIGINS')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter((origin) => origin !== '');
+  const corsWhitelist = new Set(
+    configService
+      .getOrThrow<string>('CORS_ORIGINS')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin !== ''),
+  );
 
   app.enableCors({
     origin: (
@@ -38,7 +40,7 @@ export const makeApp = async () => {
         callback(null, true);
         return;
       }
-      if (corsWhitelist.includes(origin)) {
+      if (corsWhitelist.has(origin)) {
         callback(null, origin);
       } else {
         callback(new Error('Not allowed by CORS'));

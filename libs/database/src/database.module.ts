@@ -7,6 +7,8 @@ import {
   UserRepository,
   AuditLogRepository,
   MachineRepository,
+  NotificationRepository,
+  UsingMachineRepository,
 } from './repositories';
 
 @Module({
@@ -18,6 +20,8 @@ import {
     UserRepository,
     AuditLogRepository,
     MachineRepository,
+    NotificationRepository,
+    UsingMachineRepository,
   ],
   exports: [
     DatabaseService,
@@ -26,6 +30,8 @@ import {
     UserRepository,
     AuditLogRepository,
     MachineRepository,
+    NotificationRepository,
+    UsingMachineRepository,
   ],
 })
 export class DatabaseModule {}
