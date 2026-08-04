@@ -5,7 +5,14 @@ on:
     branches:
       - main
     paths:
-      - src/**
+      - 'src/**'
+      - 'Dockerfile'
+      - 'package.json'
+      - 'bun.lock'
+  workflow_run:
+    workflows: ["Update Database (Dev)"]
+    types:
+      - completed
   workflow_dispatch:
 
 env:
@@ -17,6 +24,7 @@ jobs:
   build:
     name: Build docker Image
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
       packages: write
