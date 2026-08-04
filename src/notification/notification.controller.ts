@@ -40,8 +40,11 @@ export class NotificationController {
   @Delete('unregister')
   @ApiOkResponse({ description: 'Successfully unregistered push device.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
-  async unregisterPush(@Body('endpoint') endpoint: string) {
-    await this.notificationService.unregisterPush(endpoint);
+  async unregisterPush(
+    @Body('endpoint') endpoint: string,
+    @GetUser() user: User,
+  ) {
+    await this.notificationService.unregisterPush(user.uuid, endpoint);
     return { success: true };
   }
 }

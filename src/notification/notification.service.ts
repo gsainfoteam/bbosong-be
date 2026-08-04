@@ -23,8 +23,11 @@ export class NotificationService {
     );
   }
 
-  async unregisterPush(endpoint: string) {
-    return await this.notificationRepository.unregisterPush(endpoint);
+  async unregisterPush(userUuid: string, endpoint: string) {
+    return await this.notificationRepository.unregisterPush(
+      userUuid,
+      endpoint,
+    );
   }
 
   async createLaundryRoomSubscription(

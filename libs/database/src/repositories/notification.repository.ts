@@ -5,12 +5,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { DatabaseService } from '@lib/database/database.service';
-import {
-  Location,
-  Gender,
-  MachineType,
-  Prisma,
-} from 'generated/prisma/client';
+
+import { Location, Gender, MachineType, Prisma } from 'generated/prisma/client';
 
 @Loggable()
 @Injectable()
@@ -52,10 +48,10 @@ export class NotificationRepository {
       });
   }
 
-  async unregisterPush(endpoint: string) {
+  async unregisterPush(userUuid: string, endpoint: string) {
     return await this.databaseService.userPushSubscription
       .deleteMany({
-        where: { endpoint },
+        where: { endpoint, userUuid },
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
