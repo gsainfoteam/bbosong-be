@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'prisma/schema.prisma'
+      - 'prisma/migrations/**'
     branches:
       - main
   workflow_dispatch:
