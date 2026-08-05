@@ -13,6 +13,7 @@ import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiOkResponse,
+  ApiOperation,
   ApiSecurity,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -29,6 +30,11 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
+  @ApiOperation({
+    summary: 'User login',
+    description:
+      'Authenticate user via Infoteam OAuth token and issue JWT access and refresh tokens.',
+  })
   @ApiSecurity('oauth2')
   @ApiCreatedResponse({
     type: JwtToken,
@@ -61,11 +67,18 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @ApiOperation({
+    summary: 'Refresh access token',
+    description:
+      'Refresh access token using HTTP-only refresh token cookie with RTR rotation.',
+  })
   @ApiCreatedResponse({
     type: JwtToken,
     description: 'Access token refreshed successfully.',
   })
-  @ApiUnauthorizedResponse({ description: 'Invalid or expired refresh token.' })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid or expired refresh token.',
+  })
   async refresh(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -87,6 +100,11 @@ export class AuthController {
   }
 
   @Post('logout')
+  @ApiOperation({
+    summary: 'User logout',
+    description:
+      'Logout authenticated user and invalidate current refresh token session.',
+  })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @ApiCreatedResponse({
@@ -104,6 +122,10 @@ export class AuthController {
   }
 
   @Get('me')
+  @ApiOperation({
+    summary: 'Get current user profile',
+    description: 'Retrieve profile information of the authenticated user.',
+  })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @ApiOkResponse({
