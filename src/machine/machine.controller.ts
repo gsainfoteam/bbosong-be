@@ -20,6 +20,7 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { UserGuard } from '../auth/guard/user.guard';
+import { AdminGuard } from '../auth/guard/admin.guard';
 import { MachinePowerApiKeyGuard } from '../auth/guard/machine-power-api-key.guard';
 import { GetUser } from '../auth/decorator/get-user.decorator';
 import { User } from 'generated/prisma/client';
@@ -34,6 +35,7 @@ import {
   CreateMachineResDto,
   CreateMultipleMachinesResDto,
 } from './dto/res/create-machine-res.dto';
+import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 import { GetMachineResDto } from './dto/res/get-machine-res.dto';
 import { GetMachinePowerResDto } from './dto/res/get-machine-power-res.dto';
@@ -58,7 +60,7 @@ export class MachineController {
   }
 
   @ApiBearerAuth('user')
-  @UseGuards(UserGuard)
+  @UseGuards(AdminGuard)
   @Post()
   @ApiCreatedResponse({
     type: CreateMachineResDto,
@@ -79,7 +81,7 @@ export class MachineController {
   }
 
   @ApiBearerAuth('user')
-  @UseGuards(UserGuard)
+  @UseGuards(AdminGuard)
   @Post('/multiple')
   @ApiCreatedResponse({
     type: CreateMultipleMachinesResDto,
@@ -110,7 +112,20 @@ export class MachineController {
   }
 
   @ApiBearerAuth('user')
-  @UseGuards(UserGuard)
+  @UseGuards(AdminGuard)
+  @Patch(':uuid')
+  @ApiOkResponse({ description: 'Machine updated successfully.' })
+  @ApiNotFoundResponse({ description: 'Machine not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async updateMachine(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Body() body: UpdateMachineReqDto,
+  ): Promise<void> {
+    await this.machineService.updateMachine(uuid, body);
+  }
+
+  @ApiBearerAuth('user')
+  @UseGuards(AdminGuard)
   @Delete(':uuid')
   @ApiOkResponse({ description: 'Machine deleted successfully.' })
   @ApiNotFoundResponse({ description: 'Machine not found.' })

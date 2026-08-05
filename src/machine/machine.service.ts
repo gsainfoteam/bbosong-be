@@ -13,6 +13,7 @@ import {
   CreateMultipleMachinesReqDto,
 } from './dto/req/create-machine-req.dto';
 import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
+import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 
 @Injectable()
 export class MachineService {
@@ -43,6 +44,15 @@ export class MachineService {
 
   async getMachines(): Promise<Machine[]> {
     return await this.machineRepository.getMachines();
+  }
+
+  async updateMachine(uuid: string, body: UpdateMachineReqDto) {
+    return await this.machineRepository.updateMachine(
+      uuid,
+      body.isAvailable,
+      body.posX,
+      body.posY,
+    );
   }
 
   async deleteMachine(uuid: string) {
