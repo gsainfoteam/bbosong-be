@@ -19,7 +19,8 @@ import {
   ApiOkResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { AdminGuard, UserGuard } from '../auth/guard/user.guard';
+import { UserGuard } from '../auth/guard/user.guard';
+import { AdminGuard } from '../auth/guard/admin.guard';
 import { MachinePowerApiKeyGuard } from '../auth/guard/machine-power-api-key.guard';
 import { GetUser } from '../auth/decorator/get-user.decorator';
 import { User } from 'generated/prisma/client';
