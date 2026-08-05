@@ -27,15 +27,15 @@ import {
   UserRefreshTokenRepository,
   UserRepository,
 } from '@lib/database';
-import { ConsentType, User } from 'generated/prisma/client';
+import { ConsentType, Role, User } from 'generated/prisma/client';
 
 import {
-  UserConsent,
-  ConsentRequirement,
   ConsentData,
-  ValidatedConsentData,
+  ConsentRequirement,
   LatestPolicyVersionResponse,
   LatestPolicyVersions,
+  UserConsent,
+  ValidatedConsentData,
 } from './types/consent.type';
 import { IssueTokenType } from './types/jwt-token.type';
 import { UserLoginDto } from './dto/req/user-login.dto';
@@ -84,6 +84,18 @@ export class AuthService {
     this.ServiceNameForPolicyVersion = this.configService.getOrThrow<string>(
       'SERVICE_NAME_FOR_POLICY_VERSION',
     );
+  }
+
+  async updateRole(userUuid: string, role: Role) {
+    const user = await this.userRepository.updateUserRole(userUuid, role);
+    return {
+      uuid: user.uuid,
+      name: user.name,
+      email: user.email,
+      studentNumber: user.studentNumber,
+      gender: user.gender,
+      role: user.role,
+    };
   }
 
   // 정책 관련 기능 비활성화(IDK policy api url)
