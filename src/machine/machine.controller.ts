@@ -17,6 +17,7 @@ import {
   ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiOperation,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { UserGuard } from '../auth/guard/user.guard';
@@ -45,9 +46,14 @@ import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto'
 export class MachineController {
   constructor(private readonly machineService: MachineService) {}
 
+  @Get('summary')
+  @ApiOperation({
+    summary: 'Get laundry room summary status',
+    description:
+      'Retrieve count of available machines grouped by location, gender, and type.',
+  })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @Get('summary')
   @ApiOkResponse({
     type: GetLaundryRoomStatusResDto,
     isArray: true,
@@ -59,9 +65,14 @@ export class MachineController {
     return await this.machineService.laundryRoomStatusByGender(query.gender);
   }
 
+  @Post()
+  @ApiOperation({
+    summary: 'Create a single machine',
+    description:
+      'Create a new machine in a specified laundry room (Admin only).',
+  })
   @ApiBearerAuth('user')
   @UseGuards(AdminGuard)
-  @Post()
   @ApiCreatedResponse({
     type: CreateMachineResDto,
     description: 'Machine created successfully.',
@@ -80,9 +91,14 @@ export class MachineController {
     };
   }
 
+  @Post('/multiple')
+  @ApiOperation({
+    summary: 'Create multiple machines',
+    description:
+      'Create multiple machines sequentially in a specified laundry room (Admin only).',
+  })
   @ApiBearerAuth('user')
   @UseGuards(AdminGuard)
-  @Post('/multiple')
   @ApiCreatedResponse({
     type: CreateMultipleMachinesResDto,
     description: 'Multiple machines created successfully.',
@@ -98,9 +114,13 @@ export class MachineController {
     return { uuids: machines.map((item) => item.uuid) };
   }
 
+  @Get()
+  @ApiOperation({
+    summary: 'Get all machines',
+    description: 'Retrieve a list of all registered machines.',
+  })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @Get()
   @ApiOkResponse({
     type: GetMachineResDto,
     isArray: true,
@@ -111,9 +131,13 @@ export class MachineController {
     return await this.machineService.getMachines();
   }
 
+  @Patch(':uuid')
+  @ApiOperation({
+    summary: 'Update machine info',
+    description: 'Update specified machine properties by UUID (Admin only).',
+  })
   @ApiBearerAuth('user')
   @UseGuards(AdminGuard)
-  @Patch(':uuid')
   @ApiOkResponse({ description: 'Machine updated successfully.' })
   @ApiNotFoundResponse({ description: 'Machine not found.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
@@ -124,9 +148,13 @@ export class MachineController {
     await this.machineService.updateMachine(uuid, body);
   }
 
+  @Delete(':uuid')
+  @ApiOperation({
+    summary: 'Delete a machine',
+    description: 'Delete a machine by its UUID (Admin only).',
+  })
   @ApiBearerAuth('user')
   @UseGuards(AdminGuard)
-  @Delete(':uuid')
   @ApiOkResponse({ description: 'Machine deleted successfully.' })
   @ApiNotFoundResponse({ description: 'Machine not found.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
@@ -134,8 +162,13 @@ export class MachineController {
     await this.machineService.deleteMachine(uuid);
   }
 
-  @UseGuards(MachinePowerApiKeyGuard)
   @Post('/:uuid/power')
+  @ApiOperation({
+    summary: 'Record machine power',
+    description:
+      'Record real-time power consumption data from IoT sensors using API key.',
+  })
+  @UseGuards(MachinePowerApiKeyGuard)
   @ApiHeader({
     name: 'x-api-key',
     description: 'API key for machine power sensors',
@@ -151,9 +184,14 @@ export class MachineController {
     await this.machineService.recordMachinePower(uuid, body);
   }
 
+  @Get('/:uuid/power')
+  @ApiOperation({
+    summary: 'Get machine power history',
+    description:
+      'Retrieve power consumption records for the last 1 hour for a machine.',
+  })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @Get('/:uuid/power')
   @ApiOkResponse({
     type: GetMachinePowerResDto,
     isArray: true,
@@ -167,9 +205,14 @@ export class MachineController {
     return await this.machineService.getMachinePower(uuid);
   }
 
+  @Post('/:uuid/register')
+  @ApiOperation({
+    summary: 'Register machine usage',
+    description:
+      'Register authenticated user as operator of a running machine and enable completion notification.',
+  })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @Post('/:uuid/register')
   @ApiOkResponse({
     description:
       'Successfully registered machine usage and enabled notification.',
@@ -186,9 +229,14 @@ export class MachineController {
     return { success: true };
   }
 
+  @Patch('/:uuid/notification')
+  @ApiOperation({
+    summary: 'Toggle machine completion notification',
+    description:
+      'Enable or disable completion notification for the machine operator.',
+  })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @Patch('/:uuid/notification')
   @ApiOkResponse({
     description: 'Successfully toggled machine completion notification.',
   })
@@ -215,9 +263,14 @@ export class MachineController {
     return { success: true };
   }
 
+  @Delete('/:uuid/register')
+  @ApiOperation({
+    summary: 'Unregister machine usage',
+    description:
+      'Unlink current user from the machine usage session (set userUuid to null).',
+  })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @Delete('/:uuid/register')
   @ApiOkResponse({
     description: 'Successfully unregistered machine usage (unlinked user).',
   })

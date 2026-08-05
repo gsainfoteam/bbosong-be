@@ -9,6 +9,7 @@ import {
 import {
   ApiBearerAuth,
   ApiOkResponse,
+  ApiOperation,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { UserGuard } from '../auth/guard/user.guard';
@@ -21,9 +22,14 @@ import { SubscribeReqDto } from './dto/req/subscribe-req.dto';
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 
+  @Post('register')
+  @ApiOperation({
+    summary: 'Register push device',
+    description:
+      'Register or update Web Push device subscription credentials for the authenticated user.',
+  })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @Post('register')
   @ApiOkResponse({ description: 'Successfully registered push device.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async registerPush(
@@ -35,9 +41,14 @@ export class NotificationController {
     return { success: true };
   }
 
+  @Delete('unregister')
+  @ApiOperation({
+    summary: 'Unregister push device',
+    description:
+      'Remove a Web Push device subscription belonging to the authenticated user.',
+  })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @Delete('unregister')
   @ApiOkResponse({ description: 'Successfully unregistered push device.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async unregisterPush(
