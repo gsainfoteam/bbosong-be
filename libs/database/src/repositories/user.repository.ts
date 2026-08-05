@@ -1,12 +1,12 @@
 import { Loggable } from '@lib/logger';
 import * as crypto from 'node:crypto';
 import {
+  ConflictException,
   HttpException,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
-  ConflictException,
 } from '@nestjs/common';
 import { DatabaseService } from '../database.service';
 import { Gender, Prisma, Role, User } from 'generated/prisma/client';
@@ -96,8 +96,8 @@ export class UserRepository {
     });
   }
 
-  async updateUserRole(userUuid: string, role: Role): Promise<void> {
-    await this.databaseService.user
+  async updateUserRole(userUuid: string, role: Role) {
+    return await this.databaseService.user
       .update({
         where: { uuid: userUuid },
         data: { role },

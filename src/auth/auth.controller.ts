@@ -24,6 +24,8 @@ import { UserLoginDto } from './dto/req/user-login.dto';
 import { JwtToken } from './dto/res/jwt-token.dto';
 import { UserResDto } from './dto/res/user-res.dto';
 import { UserGuard } from './guard/user.guard';
+import { UpdateRoleReqDto } from './dto/req/update-role-req.dto';
+import { AdminGuard } from './guard/admin.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -135,5 +137,22 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   getMe(@GetUser() user: User): UserResDto {
     return this.authService.getMe(user);
+  }
+
+  @Post('role')
+  @ApiOperation({
+    summary: "Update user's role",
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(AdminGuard)
+  @ApiOkResponse({
+    type: UserResDto,
+    description: "Successfully updated user's role.",
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async updateRole(@GetUser() user: User, @Body() body: UpdateRoleReqDto) {
+    if (user.uuid === body.targetUserUuid)
+      throw new UnauthorizedException("Cannot change oneself's role");
+    return this.authService.updateRole(body.targetUserUuid, body.targetRole);
   }
 }
