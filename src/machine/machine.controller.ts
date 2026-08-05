@@ -19,7 +19,8 @@ import {
   ApiOkResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { AdminGuard, UserGuard } from '../auth/guard/user.guard';
+import { UserGuard } from '../auth/guard/user.guard';
+import { AdminGuard } from '../auth/guard/admin.guard';
 import { MachinePowerApiKeyGuard } from '../auth/guard/machine-power-api-key.guard';
 import { GetUser } from '../auth/decorator/get-user.decorator';
 import { User } from 'generated/prisma/client';
@@ -59,7 +60,7 @@ export class MachineController {
   }
 
   @ApiBearerAuth('user')
-  @UseGuards(UserGuard)
+  @UseGuards(AdminGuard)
   @Post()
   @ApiCreatedResponse({
     type: CreateMachineResDto,
@@ -80,7 +81,7 @@ export class MachineController {
   }
 
   @ApiBearerAuth('user')
-  @UseGuards(UserGuard)
+  @UseGuards(AdminGuard)
   @Post('/multiple')
   @ApiCreatedResponse({
     type: CreateMultipleMachinesResDto,
@@ -111,16 +112,6 @@ export class MachineController {
   }
 
   @ApiBearerAuth('user')
-  @UseGuards(UserGuard)
-  @Delete(':uuid')
-  @ApiOkResponse({ description: 'Machine deleted successfully.' })
-  @ApiNotFoundResponse({ description: 'Machine not found.' })
-  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
-  async deleteMachine(@Param('uuid', ParseUUIDPipe) uuid: string) {
-    await this.machineService.deleteMachine(uuid);
-  }
-
-  @ApiBearerAuth('user')
   @UseGuards(AdminGuard)
   @Patch(':uuid')
   @ApiOkResponse({ description: 'Machine updated successfully.' })
@@ -131,6 +122,16 @@ export class MachineController {
     @Body() body: UpdateMachineReqDto,
   ): Promise<void> {
     await this.machineService.updateMachine(uuid, body);
+  }
+
+  @ApiBearerAuth('user')
+  @UseGuards(AdminGuard)
+  @Delete(':uuid')
+  @ApiOkResponse({ description: 'Machine deleted successfully.' })
+  @ApiNotFoundResponse({ description: 'Machine not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async deleteMachine(@Param('uuid', ParseUUIDPipe) uuid: string) {
+    await this.machineService.deleteMachine(uuid);
   }
 
   @UseGuards(MachinePowerApiKeyGuard)

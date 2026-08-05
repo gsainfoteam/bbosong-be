@@ -46,6 +46,15 @@ export class MachineService {
     return await this.machineRepository.getMachines();
   }
 
+  async updateMachine(uuid: string, body: UpdateMachineReqDto) {
+    return await this.machineRepository.updateMachine(
+      uuid,
+      body.isAvailable,
+      body.posX,
+      body.posY,
+    );
+  }
+
   async deleteMachine(uuid: string) {
     await this.machineRepository.deleteMachine(uuid);
   }
@@ -132,6 +141,4 @@ export class MachineService {
       machineUuid,
     );
   }
-
-  async updateMachine(uuid: string, body: UpdateMachineReqDto) {}
 }

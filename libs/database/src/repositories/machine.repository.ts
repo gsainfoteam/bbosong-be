@@ -126,6 +126,30 @@ export class MachineRepository {
       });
   }
 
+  async updateMachine(
+    uuid: string,
+    isAvailable?: boolean,
+    posX?: number,
+    posY?: number,
+  ) {
+    await this.databaseService.machine
+      .update({
+        where: { uuid },
+        data: { isAvailable, posX, posY },
+      })
+      .catch((error) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          if (error.code === 'P2025') {
+            throw new NotFoundException('Machine not found.');
+          }
+          this.logger.error(`updateMachine prisma error: ${error.message}`);
+          throw new InternalServerErrorException('Database Error');
+        }
+        this.logger.error(`updateMachine error: ${error}`);
+        throw new InternalServerErrorException('Unknown Error');
+      });
+  }
+
   async deleteMachine(uuid: string): Promise<void> {
     await this.databaseService.machine
       .delete({
