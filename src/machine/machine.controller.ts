@@ -118,7 +118,7 @@ export class MachineController {
   @ApiNotFoundResponse({ description: 'Machine not found.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async updateMachine(
-    @Param('uuid') uuid: string,
+    @Param('uuid', ParseUUIDPipe) uuid: string,
     @Body() body: UpdateMachineReqDto,
   ): Promise<void> {
     await this.machineService.updateMachine(uuid, body);
