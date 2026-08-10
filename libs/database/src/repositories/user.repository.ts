@@ -97,17 +97,13 @@ export class UserRepository {
   }
 
   async updateUserRole(userUuid: string, role: Role) {
-    return await this.databaseService.user
-      .update({
-        where: { uuid: userUuid },
+    const result = await this.databaseService.user
+      .updateMany({
+        where: { uuid: userUuid, deletedAt: null },
         data: { role },
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          if (error.code === 'P2025') {
-            this.logger.debug(`user not found: ${userUuid}`);
-            throw new NotFoundException('User not found');
-          }
           if (error.code === 'P2002') {
             this.logger.debug(
               `Unique constraint on role update: ${error.message}`,
@@ -122,6 +118,11 @@ export class UserRepository {
         this.logger.error(`updateUserRole error: ${error}`);
         throw new InternalServerErrorException('Unknown Error');
       });
+
+    if (result.count === 0) {
+      this.logger.debug(`user not found or inactive: ${userUuid}`);
+      throw new NotFoundException('User not found');
+    }
   }
 
   async updateUserRoleInTx(
@@ -129,17 +130,13 @@ export class UserRepository {
     role: Role,
     tx: PrismaTransaction,
   ): Promise<void> {
-    await tx.user
-      .update({
-        where: { uuid: userUuid },
+    const result = await tx.user
+      .updateMany({
+        where: { uuid: userUuid, deletedAt: null },
         data: { role },
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          if (error.code === 'P2025') {
-            this.logger.debug(`user not found: ${userUuid}`);
-            throw new NotFoundException('User not found');
-          }
           if (error.code === 'P2002') {
             this.logger.debug(
               `Unique constraint on role update: ${error.message}`,
@@ -156,5 +153,10 @@ export class UserRepository {
         this.logger.error(`updateUserRoleInTx error: ${error}`);
         throw new InternalServerErrorException('Unknown Error');
       });
+
+    if (result.count === 0) {
+      this.logger.debug(`user not found or inactive: ${userUuid}`);
+      throw new NotFoundException('User not found');
+    }
   }
 }

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Req,
@@ -12,6 +13,7 @@ import { Request, Response } from 'express';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiSecurity,
@@ -149,10 +151,11 @@ export class AuthController {
     type: UserResDto,
     description: "Successfully updated user's role.",
   })
+  @ApiForbiddenResponse({ description: "Cannot change oneself's role." })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async updateRole(@GetUser() user: User, @Body() body: UpdateRoleReqDto) {
     if (user.uuid === body.targetUserUuid)
-      throw new UnauthorizedException("Cannot change oneself's role");
+      throw new ForbiddenException("Cannot change oneself's role");
     return this.authService.updateRole(body.targetUserUuid, body.targetRole);
   }
 }
