@@ -8,6 +8,7 @@ import {
 import { MachineRepository } from '@lib/database/repositories/machine.repository';
 import { UsingMachineRepository } from '@lib/database/repositories/using-machine.repository';
 import { LaundryRoomSummary } from '@lib/database/types/machine.type';
+import { NotificationService } from '../notification/notification.service';
 import {
   CreateMachineReqDto,
   CreateMultipleMachinesReqDto,
@@ -20,6 +21,7 @@ export class MachineService {
   constructor(
     private readonly machineRepository: MachineRepository,
     private readonly usingMachineRepository: UsingMachineRepository,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async laundryRoomStatusByGender(
@@ -46,12 +48,12 @@ export class MachineService {
     return await this.machineRepository.getMachines();
   }
 
-  async updateMachine(uuid: string, body: UpdateMachineReqDto) {
-    return await this.machineRepository.updateMachine(
+  async updateMachine(uuid: string, updateMachineReqDto: UpdateMachineReqDto) {
+    await this.machineRepository.updateMachine(
       uuid,
-      body.isAvailable,
-      body.posX,
-      body.posY,
+      updateMachineReqDto.isAvailable,
+      updateMachineReqDto.posX,
+      updateMachineReqDto.posY,
     );
   }
 
@@ -130,9 +132,31 @@ export class MachineService {
     );
   }
 
-  // Finish machine run session
+  // Finish machine run session and trigger push notifications
   async finishUsingMachine(machineUuid: string): Promise<void> {
+    const usingMachine =
+      await this.usingMachineRepository.getUsingMachineByMachineUuid(
+        machineUuid,
+      );
+    const machines = await this.machineRepository.getMachines();
+    const machine = machines.find((m) => m.uuid === machineUuid);
+
     await this.usingMachineRepository.deleteUsingMachine(machineUuid);
+
+    if (machine) {
+      if (usingMachine?.notifyOnCompletion && usingMachine.userUuid) {
+        await this.notificationService.notifyMachineCompletion(
+          usingMachine.userUuid,
+          machine,
+        );
+      }
+
+      await this.notificationService.notifyLaundryRoomAvailable(
+        machine.location,
+        machine.gender,
+        machine.type,
+      );
+    }
   }
 
   // Get active usingMachine status
