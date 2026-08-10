@@ -96,7 +96,7 @@ export class UserRepository {
     });
   }
 
-  async updateUserRole(userUuid: string, role: Role) {
+  async updateUserRole(userUuid: string, role: Role): Promise<User> {
     const result = await this.databaseService.user
       .updateMany({
         where: { uuid: userUuid, deletedAt: null },
@@ -123,13 +123,15 @@ export class UserRepository {
       this.logger.debug(`user not found or inactive: ${userUuid}`);
       throw new NotFoundException('User not found');
     }
+
+    return await this.findUser(userUuid);
   }
 
   async updateUserRoleInTx(
     userUuid: string,
     role: Role,
     tx: PrismaTransaction,
-  ): Promise<void> {
+  ): Promise<User> {
     const result = await tx.user
       .updateMany({
         where: { uuid: userUuid, deletedAt: null },
@@ -158,5 +160,9 @@ export class UserRepository {
       this.logger.debug(`user not found or inactive: ${userUuid}`);
       throw new NotFoundException('User not found');
     }
+
+    return await tx.user.findFirstOrThrow({
+      where: { uuid: userUuid, deletedAt: null },
+    });
   }
 }
