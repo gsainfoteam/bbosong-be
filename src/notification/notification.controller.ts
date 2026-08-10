@@ -17,6 +17,7 @@ import { GetUser } from '../auth/decorator/get-user.decorator';
 import { User } from 'generated/prisma/client';
 import { NotificationService } from './notification.service';
 import { SubscribeReqDto } from './dto/req/subscribe-req.dto';
+import { SubscribeLaundryRoomReqDto } from './dto/req/subscribe-laundry-room-req.dto';
 
 @Controller('notification')
 export class NotificationController {
@@ -56,6 +57,58 @@ export class NotificationController {
     @GetUser() user: User,
   ) {
     await this.notificationService.unregisterPush(user.uuid, endpoint);
+    return { success: true };
+  }
+
+  @Post('laundry-room')
+  @ApiOperation({
+    summary: 'Subscribe to laundry room availability',
+    description:
+      'Subscribe to get notified when a machine of specified location, gender, and type becomes available.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiOkResponse({
+    description:
+      'Successfully subscribed to laundry room availability notification.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async subscribeLaundryRoom(
+    @GetUser() user: User,
+    @Body() body: SubscribeLaundryRoomReqDto,
+  ) {
+    await this.notificationService.createLaundryRoomSubscription(
+      user.uuid,
+      body.location,
+      body.gender,
+      body.type,
+    );
+    return { success: true };
+  }
+
+  @Delete('laundry-room')
+  @ApiOperation({
+    summary: 'Unsubscribe from laundry room availability',
+    description:
+      'Unsubscribe from laundry room availability notification for specified location, gender, and type.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiOkResponse({
+    description:
+      'Successfully unsubscribed from laundry room availability notification.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async unsubscribeLaundryRoom(
+    @GetUser() user: User,
+    @Body() body: SubscribeLaundryRoomReqDto,
+  ) {
+    await this.notificationService.deleteLaundryRoomSubscription(
+      user.uuid,
+      body.location,
+      body.gender,
+      body.type,
+    );
     return { success: true };
   }
 }

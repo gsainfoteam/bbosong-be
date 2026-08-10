@@ -63,6 +63,23 @@ export class NotificationRepository {
       });
   }
 
+  async getUserPushSubscriptions(userUuid: string) {
+    return await this.databaseService.userPushSubscription
+      .findMany({
+        where: { userUuid },
+      })
+      .catch((error) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          this.logger.error(
+            `getUserPushSubscriptions prisma error: ${error.message}`,
+          );
+          throw new InternalServerErrorException('Database Error');
+        }
+        this.logger.error(`getUserPushSubscriptions error: ${error}`);
+        throw new InternalServerErrorException('Unknown Error');
+      });
+  }
+
   async createLaundryRoomSubscription(
     userUuid: string,
     location: Location,
@@ -114,6 +131,56 @@ export class NotificationRepository {
           throw new InternalServerErrorException('Database Error');
         }
         this.logger.error(`deleteLaundryRoomSubscription error: ${error}`);
+        throw new InternalServerErrorException('Unknown Error');
+      });
+  }
+
+  async getLaundryRoomSubscribers(
+    location: Location,
+    gender: Gender,
+    type: MachineType,
+  ) {
+    return await this.databaseService.laundryRoomSubscription
+      .findMany({
+        where: {
+          location,
+          gender,
+          type,
+        },
+      })
+      .catch((error) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          this.logger.error(
+            `getLaundryRoomSubscribers prisma error: ${error.message}`,
+          );
+          throw new InternalServerErrorException('Database Error');
+        }
+        this.logger.error(`getLaundryRoomSubscribers error: ${error}`);
+        throw new InternalServerErrorException('Unknown Error');
+      });
+  }
+
+  async deleteAllLaundryRoomSubscribers(
+    location: Location,
+    gender: Gender,
+    type: MachineType,
+  ) {
+    return await this.databaseService.laundryRoomSubscription
+      .deleteMany({
+        where: {
+          location,
+          gender,
+          type,
+        },
+      })
+      .catch((error) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          this.logger.error(
+            `deleteAllLaundryRoomSubscribers prisma error: ${error.message}`,
+          );
+          throw new InternalServerErrorException('Database Error');
+        }
+        this.logger.error(`deleteAllLaundryRoomSubscribers error: ${error}`);
         throw new InternalServerErrorException('Unknown Error');
       });
   }

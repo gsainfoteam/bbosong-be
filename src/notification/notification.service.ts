@@ -1,12 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import { SubscribeReqDto } from './dto/req/subscribe-req.dto';
-import { Gender, Location, MachineType } from 'generated/prisma/client';
+import {
+  Gender,
+  Location,
+  Machine,
+  MachineType,
+} from 'generated/prisma/client';
+import { WebPushService } from './services/web-push.service';
 
 @Injectable()
 export class NotificationService {
   constructor(
     private readonly notificationRepository: NotificationRepository,
+    private readonly webPushService: WebPushService,
   ) {}
 
   async registerPush(
@@ -24,10 +31,7 @@ export class NotificationService {
   }
 
   async unregisterPush(userUuid: string, endpoint: string) {
-    return await this.notificationRepository.unregisterPush(
-      userUuid,
-      endpoint,
-    );
+    return await this.notificationRepository.unregisterPush(userUuid, endpoint);
   }
 
   async createLaundryRoomSubscription(
@@ -52,6 +56,54 @@ export class NotificationService {
   ) {
     return await this.notificationRepository.deleteLaundryRoomSubscription(
       userUuid,
+      location,
+      gender,
+      type,
+    );
+  }
+
+  async notifyMachineCompletion(
+    userUuid: string,
+    machine: Machine,
+  ): Promise<void> {
+    const typeName = machine.type === MachineType.WASHER ? '세탁기' : '건조기';
+    const payload = {
+      title: `${typeName} 완료 알림 🧺`,
+      body: `${machine.location}동 ${machine.index}번 ${typeName} 작동이 완료되었습니다. 빨래를 수거해 주세요!`,
+      url: '/machine',
+    };
+
+    await this.webPushService.sendWebPushToUser(userUuid, payload);
+  }
+
+  async notifyLaundryRoomAvailable(
+    location: Location,
+    gender: Gender,
+    type: MachineType,
+  ): Promise<void> {
+    const subscribers =
+      await this.notificationRepository.getLaundryRoomSubscribers(
+        location,
+        gender,
+        type,
+      );
+
+    if (subscribers.length === 0) return;
+
+    const typeName = type === MachineType.WASHER ? '세탁기' : '건조기';
+    const payload = {
+      title: '빈 기기 발생 알림 🧺',
+      body: `${location}동 ${gender === Gender.MALE ? '남성' : '여성'} 세탁실에 빈 ${typeName}가 생겼습니다!`,
+      url: '/machine',
+    };
+
+    await Promise.all(
+      subscribers.map((sub) =>
+        this.webPushService.sendWebPushToUser(sub.userUuid, payload),
+      ),
+    );
+
+    await this.notificationRepository.deleteAllLaundryRoomSubscribers(
       location,
       gender,
       type,

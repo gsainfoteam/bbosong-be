@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Loggable } from '@lib/logger';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   Gender,
   Machine,
@@ -8,6 +9,7 @@ import {
 import { MachineRepository } from '@lib/database/repositories/machine.repository';
 import { UsingMachineRepository } from '@lib/database/repositories/using-machine.repository';
 import { LaundryRoomSummary } from '@lib/database/types/machine.type';
+import { NotificationService } from '../notification/notification.service';
 import {
   CreateMachineReqDto,
   CreateMultipleMachinesReqDto,
@@ -15,11 +17,15 @@ import {
 import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 
+@Loggable()
 @Injectable()
 export class MachineService {
+  private readonly logger = new Logger(MachineService.name);
+
   constructor(
     private readonly machineRepository: MachineRepository,
     private readonly usingMachineRepository: UsingMachineRepository,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async laundryRoomStatusByGender(
@@ -46,12 +52,12 @@ export class MachineService {
     return await this.machineRepository.getMachines();
   }
 
-  async updateMachine(uuid: string, body: UpdateMachineReqDto) {
-    return await this.machineRepository.updateMachine(
+  async updateMachine(uuid: string, updateMachineReqDto: UpdateMachineReqDto) {
+    await this.machineRepository.updateMachine(
       uuid,
-      body.isAvailable,
-      body.posX,
-      body.posY,
+      updateMachineReqDto.isAvailable,
+      updateMachineReqDto.posX,
+      updateMachineReqDto.posY,
     );
   }
 
@@ -130,9 +136,57 @@ export class MachineService {
     );
   }
 
-  // Finish machine run session
+  // Finish machine run session and trigger push notifications
   async finishUsingMachine(machineUuid: string): Promise<void> {
+    const usingMachine =
+      await this.usingMachineRepository.getUsingMachineByMachineUuid(
+        machineUuid,
+      );
+    const machines = await this.machineRepository.getMachines();
+    const machine = machines.find((m) => m.uuid === machineUuid);
+
     await this.usingMachineRepository.deleteUsingMachine(machineUuid);
+
+    if (machine) {
+      if (usingMachine?.notifyOnCompletion && usingMachine.userUuid) {
+        try {
+          await this.notificationService.notifyMachineCompletion(
+            usingMachine.userUuid,
+            machine,
+          );
+        } catch (error: unknown) {
+          const errorMessage =
+            error instanceof Error
+              ? (error.stack ?? error.message)
+              : typeof error === 'object' && error !== null
+                ? JSON.stringify(error)
+                : String(error);
+
+          this.logger.error(
+            `Failed to dispatch completion notification for machine ${machineUuid}: ${errorMessage}`,
+          );
+        }
+      }
+
+      try {
+        await this.notificationService.notifyLaundryRoomAvailable(
+          machine.location,
+          machine.gender,
+          machine.type,
+        );
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error
+            ? (error.stack ?? error.message)
+            : typeof error === 'object' && error !== null
+              ? JSON.stringify(error)
+              : String(error);
+
+        this.logger.error(
+          `Failed to dispatch laundry room availability notification for machine ${machineUuid}: ${errorMessage}`,
+        );
+      }
+    }
   }
 
   // Get active usingMachine status
