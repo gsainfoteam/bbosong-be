@@ -31,6 +31,16 @@ export class WebPushService implements OnModuleInit {
     webpush.setVapidDetails(subject, publicKey, privateKey);
   }
 
+  // Mask sensitive user UUID for logging
+  private maskUuid(uuid: string): string {
+    return uuid.length > 8 ? `${uuid.slice(0, 8)}...` : uuid;
+  }
+
+  // Mask sensitive push endpoint URL for logging
+  private maskEndpoint(endpoint: string): string {
+    return endpoint.length > 20 ? `...${endpoint.slice(-15)}` : endpoint;
+  }
+
   // Send Web Push notification to all active devices of a user
   async sendWebPushToUser(
     userUuid: string,
@@ -41,7 +51,7 @@ export class WebPushService implements OnModuleInit {
 
     if (subscriptions.length === 0) {
       this.logger.debug(
-        `No active push subscriptions found for user: ${userUuid}`,
+        `No active push subscriptions found for user: ${this.maskUuid(userUuid)}`,
       );
       return;
     }
@@ -60,19 +70,33 @@ export class WebPushService implements OnModuleInit {
 
         try {
           await webpush.sendNotification(pushSubscription, pushPayload);
-        } catch (error) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          if (error?.statusCode === 404 || error?.statusCode === 410) {
+        } catch (error: unknown) {
+          const statusCode =
+            error instanceof webpush.WebPushError
+              ? error.statusCode
+              : (error as { statusCode?: number })?.statusCode;
+
+          const maskedEp = this.maskEndpoint(sub.endpoint);
+
+          // Automatic cleanup of expired or unsubscribed endpoints (404 Not Found or 410 Gone)
+          if (statusCode === 404 || statusCode === 410) {
             this.logger.warn(
-              `Push endpoint expired or invalid, cleaning up: ${sub.endpoint}`,
+              `Push endpoint expired or invalid, cleaning up: ${maskedEp}`,
             );
             await this.notificationRepository.unregisterPush(
               userUuid,
               sub.endpoint,
             );
           } else {
+            const errorMessage =
+              error instanceof Error
+                ? (error.stack ?? error.message)
+                : typeof error === 'object' && error !== null
+                  ? JSON.stringify(error)
+                  : String(error);
+
             this.logger.error(
-              `Failed to send web push to endpoint ${sub.endpoint}: ${error}`,
+              `Failed to send web push to endpoint ${maskedEp}: ${errorMessage}`,
             );
           }
         }

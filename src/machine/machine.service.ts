@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Loggable } from '@lib/logger';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   Gender,
   Machine,
@@ -16,8 +17,11 @@ import {
 import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 
+@Loggable()
 @Injectable()
 export class MachineService {
+  private readonly logger = new Logger(MachineService.name);
+
   constructor(
     private readonly machineRepository: MachineRepository,
     private readonly usingMachineRepository: UsingMachineRepository,
@@ -144,18 +148,31 @@ export class MachineService {
     await this.usingMachineRepository.deleteUsingMachine(machineUuid);
 
     if (machine) {
-      if (usingMachine?.notifyOnCompletion && usingMachine.userUuid) {
-        await this.notificationService.notifyMachineCompletion(
-          usingMachine.userUuid,
-          machine,
+      try {
+        if (usingMachine?.notifyOnCompletion && usingMachine.userUuid) {
+          await this.notificationService.notifyMachineCompletion(
+            usingMachine.userUuid,
+            machine,
+          );
+        }
+
+        await this.notificationService.notifyLaundryRoomAvailable(
+          machine.location,
+          machine.gender,
+          machine.type,
+        );
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error
+            ? (error.stack ?? error.message)
+            : typeof error === 'object' && error !== null
+              ? JSON.stringify(error)
+              : String(error);
+
+        this.logger.error(
+          `Failed to dispatch notifications for machine ${machineUuid}: ${errorMessage}`,
         );
       }
-
-      await this.notificationService.notifyLaundryRoomAvailable(
-        machine.location,
-        machine.gender,
-        machine.type,
-      );
     }
   }
 
