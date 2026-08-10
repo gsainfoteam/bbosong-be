@@ -148,14 +148,27 @@ export class MachineService {
     await this.usingMachineRepository.deleteUsingMachine(machineUuid);
 
     if (machine) {
-      try {
-        if (usingMachine?.notifyOnCompletion && usingMachine.userUuid) {
+      if (usingMachine?.notifyOnCompletion && usingMachine.userUuid) {
+        try {
           await this.notificationService.notifyMachineCompletion(
             usingMachine.userUuid,
             machine,
           );
-        }
+        } catch (error: unknown) {
+          const errorMessage =
+            error instanceof Error
+              ? (error.stack ?? error.message)
+              : typeof error === 'object' && error !== null
+                ? JSON.stringify(error)
+                : String(error);
 
+          this.logger.error(
+            `Failed to dispatch completion notification for machine ${machineUuid}: ${errorMessage}`,
+          );
+        }
+      }
+
+      try {
         await this.notificationService.notifyLaundryRoomAvailable(
           machine.location,
           machine.gender,
@@ -170,7 +183,7 @@ export class MachineService {
               : String(error);
 
         this.logger.error(
-          `Failed to dispatch notifications for machine ${machineUuid}: ${errorMessage}`,
+          `Failed to dispatch laundry room availability notification for machine ${machineUuid}: ${errorMessage}`,
         );
       }
     }

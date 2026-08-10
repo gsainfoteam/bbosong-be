@@ -83,10 +83,23 @@ export class WebPushService implements OnModuleInit {
             this.logger.warn(
               `Push endpoint expired or invalid, cleaning up: ${maskedEp}`,
             );
-            await this.notificationRepository.unregisterPush(
-              userUuid,
-              sub.endpoint,
-            );
+            try {
+              await this.notificationRepository.unregisterPush(
+                userUuid,
+                sub.endpoint,
+              );
+            } catch (cleanupError: unknown) {
+              const cleanupErrorMessage =
+                cleanupError instanceof Error
+                  ? (cleanupError.stack ?? cleanupError.message)
+                  : typeof cleanupError === 'object' && cleanupError !== null
+                    ? JSON.stringify(cleanupError)
+                    : String(cleanupError);
+
+              this.logger.error(
+                `Failed to auto-cleanup expired push endpoint ${maskedEp}: ${cleanupErrorMessage}`,
+              );
+            }
           } else {
             const errorMessage =
               error instanceof Error
