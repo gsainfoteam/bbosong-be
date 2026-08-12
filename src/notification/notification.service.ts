@@ -8,6 +8,7 @@ import {
   MachineType,
 } from 'generated/prisma/client';
 import { WebPushService } from './services/web-push.service';
+import { PrismaTransaction } from '@lib/database';
 
 @Injectable()
 export class NotificationService {
@@ -107,6 +108,26 @@ export class NotificationService {
       location,
       gender,
       type,
+    );
+  }
+
+  async deleteAllUserPushSubscriptionsInTx(
+    userUuid: string,
+    tx: PrismaTransaction,
+  ) {
+    return this.notificationRepository.deleteAllUserPushSubscriptionsInTx(
+      userUuid,
+      tx,
+    );
+  }
+
+  async deleteAllUserLaundryRoomSubscriptionsInTx(
+    userUuid: string,
+    tx: PrismaTransaction,
+  ) {
+    return this.notificationRepository.deleteAllUserLaundryRoomSubscriptionsInTx(
+      userUuid,
+      tx,
     );
   }
 }

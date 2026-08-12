@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Post,
@@ -157,5 +158,28 @@ export class AuthController {
     if (user.uuid === body.targetUserUuid)
       throw new ForbiddenException("Cannot change oneself's role");
     return this.authService.updateRole(body.targetUserUuid, body.targetRole);
+  }
+
+  @Delete('me')
+  @ApiOperation({
+    summary: 'Delete user account',
+    description:
+      'Soft-delete the authenticated user and invalidate all associated sessions and push tokens.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiOkResponse({
+    description:
+      'User account successfully deleted and session cookie cleared.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async deactivateUser(
+    @GetUser() user: User,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    await this.authService.deactivateUser(user.uuid);
+    res.clearCookie('refresh_token', {
+      path: '/auth',
+    });
   }
 }

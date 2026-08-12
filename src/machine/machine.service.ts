@@ -136,6 +136,23 @@ export class MachineService {
     );
   }
 
+  // Format unknown errors to readable strings for logging
+  private formatError(error: unknown): string {
+    if (error instanceof Error) {
+      return error.stack ?? error.message;
+    }
+    if (typeof error === 'object' && error !== null) {
+      return JSON.stringify(error);
+    }
+    if (typeof error === 'string') {
+      return error;
+    }
+    if (typeof error === 'number' || typeof error === 'boolean') {
+      return error.toString();
+    }
+    return 'Unknown Error';
+  }
+
   // Finish machine run session and trigger push notifications
   async finishUsingMachine(machineUuid: string): Promise<void> {
     const usingMachine =
@@ -155,15 +172,8 @@ export class MachineService {
             machine,
           );
         } catch (error: unknown) {
-          const errorMessage =
-            error instanceof Error
-              ? (error.stack ?? error.message)
-              : typeof error === 'object' && error !== null
-                ? JSON.stringify(error)
-                : String(error);
-
           this.logger.error(
-            `Failed to dispatch completion notification for machine ${machineUuid}: ${errorMessage}`,
+            `Failed to dispatch completion notification for machine ${machineUuid}: ${this.formatError(error)}`,
           );
         }
       }
@@ -175,15 +185,8 @@ export class MachineService {
           machine.type,
         );
       } catch (error: unknown) {
-        const errorMessage =
-          error instanceof Error
-            ? (error.stack ?? error.message)
-            : typeof error === 'object' && error !== null
-              ? JSON.stringify(error)
-              : String(error);
-
         this.logger.error(
-          `Failed to dispatch laundry room availability notification for machine ${machineUuid}: ${errorMessage}`,
+          `Failed to dispatch laundry room availability notification for machine ${machineUuid}: ${this.formatError(error)}`,
         );
       }
     }

@@ -41,6 +41,23 @@ export class WebPushService implements OnModuleInit {
     return endpoint.length > 20 ? `...${endpoint.slice(-15)}` : endpoint;
   }
 
+  // Format unknown errors to readable strings for logging
+  private formatError(error: unknown): string {
+    if (error instanceof Error) {
+      return error.stack ?? error.message;
+    }
+    if (typeof error === 'object' && error !== null) {
+      return JSON.stringify(error);
+    }
+    if (typeof error === 'string') {
+      return error;
+    }
+    if (typeof error === 'number' || typeof error === 'boolean') {
+      return error.toString();
+    }
+    return 'Unknown Error';
+  }
+
   // Send Web Push notification to all active devices of a user
   async sendWebPushToUser(
     userUuid: string,
@@ -89,27 +106,13 @@ export class WebPushService implements OnModuleInit {
                 sub.endpoint,
               );
             } catch (cleanupError: unknown) {
-              const cleanupErrorMessage =
-                cleanupError instanceof Error
-                  ? (cleanupError.stack ?? cleanupError.message)
-                  : typeof cleanupError === 'object' && cleanupError !== null
-                    ? JSON.stringify(cleanupError)
-                    : String(cleanupError);
-
               this.logger.error(
-                `Failed to auto-cleanup expired push endpoint ${maskedEp}: ${cleanupErrorMessage}`,
+                `Failed to auto-cleanup expired push endpoint ${maskedEp}: ${this.formatError(cleanupError)}`,
               );
             }
           } else {
-            const errorMessage =
-              error instanceof Error
-                ? (error.stack ?? error.message)
-                : typeof error === 'object' && error !== null
-                  ? JSON.stringify(error)
-                  : String(error);
-
             this.logger.error(
-              `Failed to send web push to endpoint ${maskedEp}: ${errorMessage}`,
+              `Failed to send web push to endpoint ${maskedEp}: ${this.formatError(error)}`,
             );
           }
         }

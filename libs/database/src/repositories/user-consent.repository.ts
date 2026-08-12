@@ -72,4 +72,24 @@ export class UserConsentRepository {
         throw new InternalServerErrorException('Unknown Error');
       });
   }
+
+  async deleteUserConsentsInTx(
+    userUuid: string,
+    tx: PrismaTransaction,
+  ): Promise<void> {
+    await tx.userConsent
+      .deleteMany({
+        where: { userUuid },
+      })
+      .catch((error) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          this.logger.error(
+            `deleteUserConsentsInTx prisma error: ${error.message}`,
+          );
+          throw new InternalServerErrorException('Database Error');
+        }
+        this.logger.error(`deleteUserConsentsInTx error: ${error}`);
+        throw new InternalServerErrorException('Unknown Error');
+      });
+  }
 }

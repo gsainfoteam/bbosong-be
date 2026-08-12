@@ -42,6 +42,7 @@ import { UserLoginDto } from './dto/req/user-login.dto';
 import { UserResDto } from './dto/res/user-res.dto';
 import { ConsentRequiredException } from './exceptions/consent-required.exception';
 import { AuditLogService } from '@lib/audit-log';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class AuthService {
@@ -65,6 +66,7 @@ export class AuthService {
     private readonly userRefreshTokenRepository: UserRefreshTokenRepository,
     private readonly userConsentRepository: UserConsentRepository,
     private readonly auditLogService: AuditLogService,
+    private readonly notificationService: NotificationService,
   ) {
     this.userJwtSecret =
       this.configService.getOrThrow<string>('USER_JWT_SECRET');
@@ -487,5 +489,37 @@ export class AuthService {
       gender: user.gender,
       role: user.role,
     };
+  }
+
+  async deactivateUser(userUuid: string) {
+    await this.databaseService.$transaction(async (tx) => {
+      await this.userRepository.deleteUserInTx(userUuid, tx);
+      await this.userRefreshTokenRepository.deleteAllUserRefreshTokensInTx(
+        userUuid,
+        tx,
+      );
+      await this.notificationService.deleteAllUserPushSubscriptionsInTx(
+        userUuid,
+        tx,
+      );
+      await this.notificationService.deleteAllUserLaundryRoomSubscriptionsInTx(
+        userUuid,
+        tx,
+      );
+      await this.userConsentRepository.deleteUserConsentsInTx(
+        userUuid,
+        tx,
+      );
+      await this.auditLogService.createAuditLogInTx(
+        userUuid,
+        'USER_DEACTIVATE',
+        'User voluntarily deactivated account',
+        tx,
+      );
+    });
+
+    const maskedUuid =
+      userUuid.length > 8 ? `${userUuid.slice(0, 8)}...` : userUuid;
+    this.logger.log(`User deactivated successfully: ${maskedUuid}`);
   }
 }
