@@ -90,6 +90,10 @@ export class AuthService {
 
   async updateRole(userUuid: string, role: Role) {
     const user = await this.userRepository.updateUserRole(userUuid, role);
+    return this.toUserResDto(user);
+  }
+
+  private toUserResDto(user: User): UserResDto {
     return {
       uuid: user.uuid,
       name: user.name,
@@ -100,7 +104,6 @@ export class AuthService {
     };
   }
 
-  // 정책 관련 기능 비활성화(IDK policy api url)
   private async getLatestPolicyVersions(): Promise<LatestPolicyVersions> {
     const { service, tos, privacy } = await firstValueFrom(
       this.httpService.get<LatestPolicyVersionResponse>(this.policyApiUrl).pipe(
@@ -208,10 +211,18 @@ export class AuthService {
         };
       });
 
-    const accessToken = this.jwtService.sign(
+    return {
+      access_token: this.signAccessToken(user.uuid, sessionId),
+      refresh_token: refreshToken,
+      refreshTokenExpiredAt: expiredAt,
+    };
+  }
+
+  private signAccessToken(userUuid: string, sessionId: string): string {
+    return this.jwtService.sign(
       { sessionId },
       {
-        subject: user.uuid,
+        subject: userUuid,
         secret: this.userJwtSecret,
         expiresIn: this.userJwtExpire,
         algorithm: 'HS256',
@@ -219,12 +230,6 @@ export class AuthService {
         issuer: this.userJwtIssuer,
       },
     );
-
-    return {
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      refreshTokenExpiredAt: expiredAt,
-    };
   }
 
   private async validateAndHandleConsentsInTransaction(
@@ -459,17 +464,7 @@ export class AuthService {
       expiredAt,
     );
     return {
-      access_token: this.jwtService.sign(
-        { sessionId },
-        {
-          subject: userUuid,
-          secret: this.userJwtSecret,
-          expiresIn: this.userJwtExpire,
-          algorithm: 'HS256',
-          audience: this.userJwtAudience,
-          issuer: this.userJwtIssuer,
-        },
-      ),
+      access_token: this.signAccessToken(userUuid, sessionId),
       refresh_token: newRefreshToken,
       refreshTokenExpiredAt: expiredAt,
     };
@@ -480,15 +475,7 @@ export class AuthService {
   }
 
   getMe(user: User): UserResDto {
-    // Map the database user entity to the client-facing response DTO
-    return {
-      uuid: user.uuid,
-      name: user.name,
-      email: user.email,
-      studentNumber: user.studentNumber,
-      gender: user.gender,
-      role: user.role,
-    };
+    return this.toUserResDto(user);
   }
 
   async deactivateUser(userUuid: string) {
@@ -506,10 +493,7 @@ export class AuthService {
         userUuid,
         tx,
       );
-      await this.userConsentRepository.deleteUserConsentsInTx(
-        userUuid,
-        tx,
-      );
+      await this.userConsentRepository.deleteUserConsentsInTx(userUuid, tx);
       await this.auditLogService.createAuditLogInTx(
         userUuid,
         'USER_DEACTIVATE',

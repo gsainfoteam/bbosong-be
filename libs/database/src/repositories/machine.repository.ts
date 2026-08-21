@@ -126,6 +126,17 @@ export class MachineRepository {
       });
   }
 
+  async getMachine(uuid: string): Promise<Machine | null> {
+    return await this.databaseService.machine
+      .findUnique({
+        where: { uuid },
+      })
+      .catch((error) => {
+        this.logger.error(`getMachine error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
+  }
+
   async updateMachine(
     uuid: string,
     isAvailable?: boolean,
