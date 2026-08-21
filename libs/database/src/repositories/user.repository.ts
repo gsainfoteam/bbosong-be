@@ -103,20 +103,8 @@ export class UserRepository {
         data: { role },
       })
       .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          if (error.code === 'P2002') {
-            this.logger.debug(
-              `Unique constraint on role update: ${error.message}`,
-            );
-            throw new ConflictException(
-              'Another SUPERADMIN transfer is in progress or a SUPERADMIN already exists',
-            );
-          }
-          this.logger.error(`updateUserRole prisma error: ${error.message}`);
-          throw new InternalServerErrorException('Database Error');
-        }
         this.logger.error(`updateUserRole error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
+        throw new InternalServerErrorException('Database Error');
       });
 
     if (result.count === 0) {
@@ -126,45 +114,6 @@ export class UserRepository {
 
     return await this.findUser(userUuid);
   }
-
-  // async updateUserRoleInTx(
-  //   userUuid: string,
-  //   role: Role,
-  //   tx: PrismaTransaction,
-  // ): Promise<User> {
-  //   const result = await tx.user
-  //     .updateMany({
-  //       where: { uuid: userUuid, deletedAt: null },
-  //       data: { role },
-  //     })
-  //     .catch((error) => {
-  //       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-  //         if (error.code === 'P2002') {
-  //           this.logger.debug(
-  //             `Unique constraint on role update: ${error.message}`,
-  //           );
-  //           throw new ConflictException(
-  //             'Another SUPERADMIN transfer is in progress or a SUPERADMIN already exists',
-  //           );
-  //         }
-  //         this.logger.error(
-  //           `updateUserRoleInTx prisma error: ${error.message}`,
-  //         );
-  //         throw new InternalServerErrorException('Database Error');
-  //       }
-  //       this.logger.error(`updateUserRoleInTx error: ${error}`);
-  //       throw new InternalServerErrorException('Unknown Error');
-  //     });
-  //
-  //   if (result.count === 0) {
-  //     this.logger.debug(`user not found or inactive: ${userUuid}`);
-  //     throw new NotFoundException('User not found');
-  //   }
-  //
-  //   return await tx.user.findFirstOrThrow({
-  //     where: { uuid: userUuid, deletedAt: null },
-  //   });
-  // }
 
   async deleteUserInTx(userUuid: string, tx: PrismaTransaction): Promise<void> {
     const result = await tx.user

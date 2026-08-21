@@ -15,6 +15,17 @@ export class NotificationRepository {
   private readonly logger = new Logger(NotificationRepository.name);
   constructor(private readonly databaseService: DatabaseService) {}
 
+  private async run<T>(methodName: string, op: Promise<T>): Promise<T> {
+    return await op.catch((error) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        this.logger.error(`${methodName} prisma error: ${error.message}`);
+        throw new InternalServerErrorException('Database Error');
+      }
+      this.logger.error(`${methodName} error: ${error}`);
+      throw new InternalServerErrorException('Unknown Error');
+    });
+  }
+
   async registerPush(
     userUuid: string,
     endpoint: string,
@@ -22,8 +33,9 @@ export class NotificationRepository {
     auth: string,
     userAgent?: string,
   ) {
-    return await this.databaseService.userPushSubscription
-      .upsert({
+    return this.run(
+      'registerPush',
+      this.databaseService.userPushSubscription.upsert({
         where: { endpoint: endpoint },
         create: {
           userUuid,
@@ -38,47 +50,26 @@ export class NotificationRepository {
           auth,
           userAgent,
         },
-      })
-      .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          this.logger.error(`registerPush prisma error: ${error.message}`);
-          throw new InternalServerErrorException('Database Error');
-        }
-        this.logger.error(`registerPush error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
-      });
+      }),
+    );
   }
 
   async unregisterPush(userUuid: string, endpoint: string) {
-    return await this.databaseService.userPushSubscription
-      .deleteMany({
+    return this.run(
+      'unregisterPush',
+      this.databaseService.userPushSubscription.deleteMany({
         where: { endpoint, userUuid },
-      })
-      .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          this.logger.error(`unregisterPush prisma error: ${error.message}`);
-          throw new InternalServerErrorException('Database Error');
-        }
-        this.logger.error(`unregisterPush error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
-      });
+      }),
+    );
   }
 
   async getUserPushSubscriptions(userUuid: string) {
-    return await this.databaseService.userPushSubscription
-      .findMany({
+    return this.run(
+      'getUserPushSubscriptions',
+      this.databaseService.userPushSubscription.findMany({
         where: { userUuid },
-      })
-      .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          this.logger.error(
-            `getUserPushSubscriptions prisma error: ${error.message}`,
-          );
-          throw new InternalServerErrorException('Database Error');
-        }
-        this.logger.error(`getUserPushSubscriptions error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
-      });
+      }),
+    );
   }
 
   async createLaundryRoomSubscription(
@@ -87,8 +78,9 @@ export class NotificationRepository {
     gender: Gender,
     type: MachineType,
   ) {
-    return await this.databaseService.laundryRoomSubscription
-      .upsert({
+    return this.run(
+      'createLaundryRoomSubscription',
+      this.databaseService.laundryRoomSubscription.upsert({
         where: {
           userUuid_location_gender_type: { userUuid, location, gender, type },
         },
@@ -96,17 +88,8 @@ export class NotificationRepository {
         update: {
           createdAt: new Date(),
         },
-      })
-      .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          this.logger.error(
-            `createLaundryRoomSubscription prisma error: ${error.message}`,
-          );
-          throw new InternalServerErrorException('Database Error');
-        }
-        this.logger.error(`createLaundryRoomSubscription error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
-      });
+      }),
+    );
   }
 
   async deleteLaundryRoomSubscription(
@@ -115,25 +98,17 @@ export class NotificationRepository {
     gender: Gender,
     type: MachineType,
   ) {
-    return await this.databaseService.laundryRoomSubscription
-      .deleteMany({
+    return this.run(
+      'deleteLaundryRoomSubscription',
+      this.databaseService.laundryRoomSubscription.deleteMany({
         where: {
           userUuid,
           location,
           gender,
           type,
         },
-      })
-      .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          this.logger.error(
-            `deleteLaundryRoomSubscription prisma error: ${error.message}`,
-          );
-          throw new InternalServerErrorException('Database Error');
-        }
-        this.logger.error(`deleteLaundryRoomSubscription error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
-      });
+      }),
+    );
   }
 
   async getLaundryRoomSubscribers(
@@ -141,24 +116,16 @@ export class NotificationRepository {
     gender: Gender,
     type: MachineType,
   ) {
-    return await this.databaseService.laundryRoomSubscription
-      .findMany({
+    return this.run(
+      'getLaundryRoomSubscribers',
+      this.databaseService.laundryRoomSubscription.findMany({
         where: {
           location,
           gender,
           type,
         },
-      })
-      .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          this.logger.error(
-            `getLaundryRoomSubscribers prisma error: ${error.message}`,
-          );
-          throw new InternalServerErrorException('Database Error');
-        }
-        this.logger.error(`getLaundryRoomSubscribers error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
-      });
+      }),
+    );
   }
 
   async deleteAllLaundryRoomSubscribers(
@@ -166,64 +133,39 @@ export class NotificationRepository {
     gender: Gender,
     type: MachineType,
   ) {
-    return await this.databaseService.laundryRoomSubscription
-      .deleteMany({
+    return this.run(
+      'deleteAllLaundryRoomSubscribers',
+      this.databaseService.laundryRoomSubscription.deleteMany({
         where: {
           location,
           gender,
           type,
         },
-      })
-      .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          this.logger.error(
-            `deleteAllLaundryRoomSubscribers prisma error: ${error.message}`,
-          );
-          throw new InternalServerErrorException('Database Error');
-        }
-        this.logger.error(`deleteAllLaundryRoomSubscribers error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
-      });
+      }),
+    );
   }
+
   async deleteAllUserPushSubscriptionsInTx(
     userUuid: string,
     tx: PrismaTransaction,
   ): Promise<void> {
-    await tx.userPushSubscription
-      .deleteMany({
+    await this.run(
+      'deleteAllUserPushSubscriptionsInTx',
+      tx.userPushSubscription.deleteMany({
         where: { userUuid },
-      })
-      .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          this.logger.error(
-            `deleteAllUserPushSubscriptionsInTx prisma error: ${error.message}`,
-          );
-          throw new InternalServerErrorException('Database Error');
-        }
-        this.logger.error(`deleteAllUserPushSubscriptionsInTx error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
-      });
+      }),
+    );
   }
 
   async deleteAllUserLaundryRoomSubscriptionsInTx(
     userUuid: string,
     tx: PrismaTransaction,
   ): Promise<void> {
-    await tx.laundryRoomSubscription
-      .deleteMany({
+    await this.run(
+      'deleteAllUserLaundryRoomSubscriptionsInTx',
+      tx.laundryRoomSubscription.deleteMany({
         where: { userUuid },
-      })
-      .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          this.logger.error(
-            `deleteAllUserLaundryRoomSubscriptionsInTx prisma error: ${error.message}`,
-          );
-          throw new InternalServerErrorException('Database Error');
-        }
-        this.logger.error(
-          `deleteAllUserLaundryRoomSubscriptionsInTx error: ${error}`,
-        );
-        throw new InternalServerErrorException('Unknown Error');
-      });
+      }),
+    );
   }
 }

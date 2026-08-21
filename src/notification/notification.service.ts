@@ -63,11 +63,15 @@ export class NotificationService {
     );
   }
 
+  private machineTypeName(type: MachineType): string {
+    return type === MachineType.WASHER ? '세탁기' : '건조기';
+  }
+
   async notifyMachineCompletion(
     userUuid: string,
     machine: Machine,
   ): Promise<void> {
-    const typeName = machine.type === MachineType.WASHER ? '세탁기' : '건조기';
+    const typeName = this.machineTypeName(machine.type);
     const payload = {
       title: `${typeName} 완료 알림 🧺`,
       body: `${machine.location}동 ${machine.index}번 ${typeName} 작동이 완료되었습니다. 빨래를 수거해 주세요!`,
@@ -91,7 +95,7 @@ export class NotificationService {
 
     if (subscribers.length === 0) return;
 
-    const typeName = type === MachineType.WASHER ? '세탁기' : '건조기';
+    const typeName = this.machineTypeName(type);
     const payload = {
       title: '빈 기기 발생 알림 🧺',
       body: `${location}동 ${gender === Gender.MALE ? '남성' : '여성'} 세탁실에 빈 ${typeName}가 생겼습니다!`,

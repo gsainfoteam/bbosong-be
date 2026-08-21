@@ -15,6 +15,7 @@ import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiSecurity,
@@ -60,13 +61,7 @@ export class AuthController {
     const { access_token, refresh_token, refreshTokenExpiredAt } =
       await this.authService.userLogin(auth, body);
 
-    res.cookie('refresh_token', refresh_token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
-      expires: refreshTokenExpiredAt,
-      path: '/auth',
-    });
+    this.setRefreshTokenCookie(res, refresh_token, refreshTokenExpiredAt);
 
     return { access_token };
   }
@@ -93,13 +88,7 @@ export class AuthController {
 
     const { access_token, refresh_token, refreshTokenExpiredAt } =
       await this.authService.userRefresh(refreshToken);
-    res.cookie('refresh_token', refresh_token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
-      expires: refreshTokenExpiredAt,
-      path: '/auth',
-    });
+    this.setRefreshTokenCookie(res, refresh_token, refreshTokenExpiredAt);
 
     return { access_token };
   }
@@ -121,9 +110,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
     await this.authService.userLogout(user.uuid);
-    res.clearCookie('refresh_token', {
-      path: '/auth',
-    });
+    this.clearRefreshTokenCookie(res);
   }
 
   @Get('me')
@@ -140,24 +127,6 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   getMe(@GetUser() user: User): UserResDto {
     return this.authService.getMe(user);
-  }
-
-  @Post('role')
-  @ApiOperation({
-    summary: "Update user's role",
-  })
-  @ApiBearerAuth('user')
-  @UseGuards(AdminGuard)
-  @ApiOkResponse({
-    type: UserResDto,
-    description: "Successfully updated user's role.",
-  })
-  @ApiForbiddenResponse({ description: "Cannot change oneself's role." })
-  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
-  async updateRole(@GetUser() user: User, @Body() body: UpdateRoleReqDto) {
-    if (user.uuid === body.targetUserUuid)
-      throw new ForbiddenException("Cannot change oneself's role");
-    return this.authService.updateRole(body.targetUserUuid, body.targetRole);
   }
 
   @Delete('me')
@@ -178,6 +147,48 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
     await this.authService.deactivateUser(user.uuid);
+    this.clearRefreshTokenCookie(res);
+  }
+
+  @Post('role')
+  @ApiOperation({
+    summary: "Update user's role",
+    description:
+      "Change a target user's role (Admin only). A user cannot change their own role.",
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(AdminGuard)
+  @ApiOkResponse({
+    type: UserResDto,
+    description: "Successfully updated user's role.",
+  })
+  @ApiForbiddenResponse({ description: "Cannot change oneself's role." })
+  @ApiNotFoundResponse({ description: 'Target user not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async updateRole(
+    @GetUser() user: User,
+    @Body() body: UpdateRoleReqDto,
+  ): Promise<UserResDto> {
+    if (user.uuid === body.targetUserUuid)
+      throw new ForbiddenException("Cannot change oneself's role");
+    return this.authService.updateRole(body.targetUserUuid, body.targetRole);
+  }
+
+  private setRefreshTokenCookie(
+    res: Response,
+    refreshToken: string,
+    expires: Date,
+  ): void {
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      expires,
+      path: '/auth',
+    });
+  }
+
+  private clearRefreshTokenCookie(res: Response): void {
     res.clearCookie('refresh_token', {
       path: '/auth',
     });

@@ -3,6 +3,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import * as webpush from 'web-push';
+import { formatError } from '../../common/utils/format-error.util';
 
 export interface WebPushPayload {
   title: string;
@@ -39,27 +40,6 @@ export class WebPushService implements OnModuleInit {
   // Mask sensitive push endpoint URL for logging
   private maskEndpoint(endpoint: string): string {
     return endpoint.length > 20 ? `...${endpoint.slice(-15)}` : endpoint;
-  }
-
-  // Format unknown errors to readable strings for logging
-  private formatError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.stack ?? error.message;
-    }
-    if (typeof error === 'object' && error !== null) {
-      try {
-        return JSON.stringify(error);
-      } catch {
-        return 'Unserializable Error';
-      }
-    }
-    if (typeof error === 'string') {
-      return error;
-    }
-    if (typeof error === 'number' || typeof error === 'boolean') {
-      return error.toString();
-    }
-    return 'Unknown Error';
   }
 
   // Send Web Push notification to all active devices of a user
@@ -111,12 +91,12 @@ export class WebPushService implements OnModuleInit {
               );
             } catch (cleanupError: unknown) {
               this.logger.error(
-                `Failed to auto-cleanup expired push endpoint ${maskedEp}: ${this.formatError(cleanupError)}`,
+                `Failed to auto-cleanup expired push endpoint ${maskedEp}: ${formatError(cleanupError)}`,
               );
             }
           } else {
             this.logger.error(
-              `Failed to send web push to endpoint ${maskedEp}: ${this.formatError(error)}`,
+              `Failed to send web push to endpoint ${maskedEp}: ${formatError(error)}`,
             );
           }
         }

@@ -9,6 +9,7 @@ import {
 import { MachineRepository } from '@lib/database/repositories/machine.repository';
 import { UsingMachineRepository } from '@lib/database/repositories/using-machine.repository';
 import { LaundryRoomSummary } from '@lib/database/types/machine.type';
+import { formatError } from '../common/utils/format-error.util';
 import { NotificationService } from '../notification/notification.service';
 import {
   CreateMachineReqDto,
@@ -73,7 +74,6 @@ export class MachineService {
     return await this.machineRepository.getMachinePowerInLastHour(uuid);
   }
 
-  // Enable machine completion notification for the operating user
   async enableMachineNotification(
     userUuid: string,
     machineUuid: string,
@@ -82,14 +82,9 @@ export class MachineService {
       userUuid,
       machineUuid,
     );
-    if (count === 0) {
-      throw new NotFoundException(
-        'Machine is not running or operating user mismatch.',
-      );
-    }
+    this.ensureMachineOperationAffected(count);
   }
 
-  // Disable machine completion notification for the operating user
   async disableMachineNotification(
     userUuid: string,
     machineUuid: string,
@@ -98,14 +93,9 @@ export class MachineService {
       userUuid,
       machineUuid,
     );
-    if (count === 0) {
-      throw new NotFoundException(
-        'Machine is not running or operating user mismatch.',
-      );
-    }
+    this.ensureMachineOperationAffected(count);
   }
 
-  // Unlink user from machine usage (set userUuid to null)
   async unlinkUserFromMachine(
     userUuid: string,
     machineUuid: string,
@@ -114,6 +104,10 @@ export class MachineService {
       userUuid,
       machineUuid,
     );
+    this.ensureMachineOperationAffected(count);
+  }
+
+  private ensureMachineOperationAffected(count: number): void {
     if (count === 0) {
       throw new NotFoundException(
         'Machine is not running or operating user mismatch.',
@@ -121,7 +115,6 @@ export class MachineService {
     }
   }
 
-  // Start machine run session
   async startUsingMachine(
     machineUuid: string,
     durationMinutes: number,
@@ -136,67 +129,53 @@ export class MachineService {
     );
   }
 
-  // Format unknown errors to readable strings for logging
-  private formatError(error: unknown): string {
-    if (error instanceof Error) {
-      return error.stack ?? error.message;
-    }
-    if (typeof error === 'object' && error !== null) {
-      try {
-        return JSON.stringify(error);
-      } catch {
-        return 'Unserializable Error';
-      }
-    }
-    if (typeof error === 'string') {
-      return error;
-    }
-    if (typeof error === 'number' || typeof error === 'boolean') {
-      return error.toString();
-    }
-    return 'Unknown Error';
-  }
-
-  // Finish machine run session and trigger push notifications
   async finishUsingMachine(machineUuid: string): Promise<void> {
     const usingMachine =
       await this.usingMachineRepository.getUsingMachineByMachineUuid(
         machineUuid,
       );
-    const machines = await this.machineRepository.getMachines();
-    const machine = machines.find((m) => m.uuid === machineUuid);
+    const machine = await this.machineRepository.getMachine(machineUuid);
 
     await this.usingMachineRepository.deleteUsingMachine(machineUuid);
 
-    if (machine) {
-      if (usingMachine?.notifyOnCompletion && usingMachine.userUuid) {
-        try {
-          await this.notificationService.notifyMachineCompletion(
-            usingMachine.userUuid,
-            machine,
-          );
-        } catch (error: unknown) {
-          this.logger.error(
-            `Failed to dispatch completion notification for machine ${machineUuid}: ${this.formatError(error)}`,
-          );
-        }
-      }
+    if (!machine) return;
 
-      try {
-        await this.notificationService.notifyLaundryRoomAvailable(
+    const notifyUserUuid = usingMachine?.notifyOnCompletion
+      ? usingMachine.userUuid
+      : null;
+    if (notifyUserUuid) {
+      await this.dispatchNotification(
+        () =>
+          this.notificationService.notifyMachineCompletion(
+            notifyUserUuid,
+            machine,
+          ),
+        `completion notification for machine ${machineUuid}`,
+      );
+    }
+
+    await this.dispatchNotification(
+      () =>
+        this.notificationService.notifyLaundryRoomAvailable(
           machine.location,
           machine.gender,
           machine.type,
-        );
-      } catch (error: unknown) {
-        this.logger.error(
-          `Failed to dispatch laundry room availability notification for machine ${machineUuid}: ${this.formatError(error)}`,
-        );
-      }
+        ),
+      `laundry room availability notification for machine ${machineUuid}`,
+    );
+  }
+
+  private async dispatchNotification(
+    action: () => Promise<void>,
+    context: string,
+  ): Promise<void> {
+    try {
+      await action();
+    } catch (error: unknown) {
+      this.logger.error(`Failed to dispatch ${context}: ${formatError(error)}`);
     }
   }
 
-  // Get active usingMachine status
   async getUsingMachine(machineUuid: string): Promise<UsingMachine | null> {
     return await this.usingMachineRepository.getUsingMachineByMachineUuid(
       machineUuid,
