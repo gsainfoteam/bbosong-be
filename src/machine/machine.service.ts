@@ -53,6 +53,17 @@ export class MachineService {
     return await this.machineRepository.getMachines();
   }
 
+  async getMachineDetail(
+    uuid: string,
+  ): Promise<Machine & { currentUsage: UsingMachine | null }> {
+    const machine = await this.machineRepository.getMachineWithUsage(uuid);
+    if (!machine) {
+      throw new NotFoundException('Machine not found.');
+    }
+
+    return machine;
+  }
+
   async updateMachine(uuid: string, updateMachineReqDto: UpdateMachineReqDto) {
     await this.machineRepository.updateMachine(
       uuid,
