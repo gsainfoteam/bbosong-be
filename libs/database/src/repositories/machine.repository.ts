@@ -8,7 +8,10 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '@lib/database/database.service';
 import { Gender, Machine, MachinePower, Prisma } from 'generated/prisma/client';
-import { LaundryRoomSummary } from '@lib/database/types/machine.type';
+import {
+  LaundryRoomSummary,
+  MachineWithUsage,
+} from '@lib/database/types/machine.type';
 import {
   CreateMachineReqDto,
   CreateMultipleMachinesReqDto,
@@ -133,6 +136,18 @@ export class MachineRepository {
       })
       .catch((error) => {
         this.logger.error(`getMachine error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
+  }
+
+  async getMachineWithUsage(uuid: string): Promise<MachineWithUsage | null> {
+    return await this.databaseService.machine
+      .findUnique({
+        where: { uuid },
+        include: { currentUsage: true },
+      })
+      .catch((error) => {
+        this.logger.error(`getMachineWithUsage error: ${error}`);
         throw new InternalServerErrorException('Database Error');
       });
   }

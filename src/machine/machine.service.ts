@@ -8,7 +8,10 @@ import {
 } from 'generated/prisma/client';
 import { MachineRepository } from '@lib/database/repositories/machine.repository';
 import { UsingMachineRepository } from '@lib/database/repositories/using-machine.repository';
-import { LaundryRoomSummary } from '@lib/database/types/machine.type';
+import {
+  LaundryRoomSummary,
+  MachineWithUsage,
+} from '@lib/database/types/machine.type';
 import { formatError } from '../common/utils/format-error.util';
 import { NotificationService } from '../notification/notification.service';
 import {
@@ -51,6 +54,15 @@ export class MachineService {
 
   async getMachines(): Promise<Machine[]> {
     return await this.machineRepository.getMachines();
+  }
+
+  async getMachineDetail(uuid: string): Promise<MachineWithUsage> {
+    const machine = await this.machineRepository.getMachineWithUsage(uuid);
+    if (!machine) {
+      throw new NotFoundException('Machine not found.');
+    }
+
+    return machine;
   }
 
   async updateMachine(uuid: string, updateMachineReqDto: UpdateMachineReqDto) {

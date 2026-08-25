@@ -39,6 +39,7 @@ import {
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 import { GetMachineResDto } from './dto/res/get-machine-res.dto';
+import { GetMachineDetailResDto } from './dto/res/get-machine-detail-res.dto';
 import { GetMachinePowerResDto } from './dto/res/get-machine-power-res.dto';
 import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto';
 
@@ -129,6 +130,26 @@ export class MachineController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async getMachines(): Promise<GetMachineResDto[]> {
     return await this.machineService.getMachines();
+  }
+
+  @Get(':uuid')
+  @ApiOperation({
+    summary: 'Get machine detail',
+    description:
+      'Retrieve all information of a machine by UUID, including its current usage session.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiOkResponse({
+    type: GetMachineDetailResDto,
+    description: 'Successfully retrieved machine detail.',
+  })
+  @ApiNotFoundResponse({ description: 'Machine not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async getMachine(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+  ): Promise<GetMachineDetailResDto> {
+    return await this.machineService.getMachineDetail(uuid);
   }
 
   @Patch(':uuid')
