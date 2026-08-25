@@ -7,14 +7,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DatabaseService } from '@lib/database/database.service';
+import { Gender, Machine, MachinePower, Prisma } from 'generated/prisma/client';
 import {
-  Gender,
-  Machine,
-  MachinePower,
-  Prisma,
-  UsingMachine,
-} from 'generated/prisma/client';
-import { LaundryRoomSummary } from '@lib/database/types/machine.type';
+  LaundryRoomSummary,
+  MachineWithUsage,
+} from '@lib/database/types/machine.type';
 import {
   CreateMachineReqDto,
   CreateMultipleMachinesReqDto,
@@ -143,9 +140,7 @@ export class MachineRepository {
       });
   }
 
-  async getMachineWithUsage(
-    uuid: string,
-  ): Promise<(Machine & { currentUsage: UsingMachine | null }) | null> {
+  async getMachineWithUsage(uuid: string): Promise<MachineWithUsage | null> {
     return await this.databaseService.machine
       .findUnique({
         where: { uuid },

@@ -1,4 +1,9 @@
-import { Location, Gender, MachineType } from 'generated/prisma/client';
+import {
+  Location,
+  Gender,
+  MachineType,
+  Prisma,
+} from 'generated/prisma/client';
 
 export type LaundryRoomSummary = {
   location: Location;
@@ -6,3 +11,11 @@ export type LaundryRoomSummary = {
   gender: Gender;
   unusedCount: number;
 };
+
+const machineWithUsageArgs = {
+  include: { currentUsage: true },
+} satisfies Prisma.MachineDefaultArgs;
+
+export type MachineWithUsage = Prisma.MachineGetPayload<
+  typeof machineWithUsageArgs
+>;
