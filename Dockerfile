@@ -16,7 +16,7 @@ RUN bun install --production
 FROM installer AS builder
 COPY . .
 # COPY --from=prod /usr/src/app/generated ./generated
-RUN bunx --bun prisma generate && bun install && bun run build
+RUN bun install --frozen-lockfile && bunx --bun prisma generate && bun run build
 
 # copy production dependencies and source code into final image
 FROM base AS release
