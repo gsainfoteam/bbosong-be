@@ -42,6 +42,7 @@ import { GetMachineResDto } from './dto/res/get-machine-res.dto';
 import { GetMachineDetailResDto } from './dto/res/get-machine-detail-res.dto';
 import { GetMachinePowerResDto } from './dto/res/get-machine-power-res.dto';
 import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto';
+import { SuccessResDto } from '../common/dto/res/success-res.dto';
 
 @Controller('machine')
 export class MachineController {
@@ -235,6 +236,7 @@ export class MachineController {
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @ApiOkResponse({
+    type: SuccessResDto,
     description:
       'Successfully registered machine usage and enabled notification.',
   })
@@ -259,6 +261,7 @@ export class MachineController {
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @ApiOkResponse({
+    type: SuccessResDto,
     description: 'Successfully toggled machine completion notification.',
   })
   @ApiNotFoundResponse({
@@ -293,6 +296,7 @@ export class MachineController {
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @ApiOkResponse({
+    type: SuccessResDto,
     description: 'Successfully unregistered machine usage (unlinked user).',
   })
   @ApiNotFoundResponse({
