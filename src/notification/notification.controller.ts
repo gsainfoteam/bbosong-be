@@ -18,6 +18,7 @@ import { User } from 'generated/prisma/client';
 import { NotificationService } from './notification.service';
 import { SubscribeReqDto } from './dto/req/subscribe-req.dto';
 import { SubscribeLaundryRoomReqDto } from './dto/req/subscribe-laundry-room-req.dto';
+import { SuccessResDto } from '../common/dto/res/success-res.dto';
 
 @Controller('notification')
 export class NotificationController {
@@ -31,7 +32,10 @@ export class NotificationController {
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @ApiOkResponse({ description: 'Successfully registered push device.' })
+  @ApiOkResponse({
+    type: SuccessResDto,
+    description: 'Successfully registered push device.',
+  })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async registerPush(
     @Body() dto: SubscribeReqDto,
@@ -50,7 +54,10 @@ export class NotificationController {
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @ApiOkResponse({ description: 'Successfully unregistered push device.' })
+  @ApiOkResponse({
+    type: SuccessResDto,
+    description: 'Successfully unregistered push device.',
+  })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async unregisterPush(
     @Body('endpoint') endpoint: string,
@@ -69,6 +76,7 @@ export class NotificationController {
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @ApiOkResponse({
+    type: SuccessResDto,
     description:
       'Successfully subscribed to laundry room availability notification.',
   })
@@ -95,6 +103,7 @@ export class NotificationController {
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @ApiOkResponse({
+    type: SuccessResDto,
     description:
       'Successfully unsubscribed from laundry room availability notification.',
   })
