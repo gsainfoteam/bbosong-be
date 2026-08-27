@@ -62,7 +62,10 @@ export class MachineRepository {
   async createMachine(data: CreateMachineReqDto): Promise<Machine> {
     return this.databaseService.machine
       .create({
-        data,
+        data: {
+          ...data,
+          currentUsage: { create: {} },
+        },
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -82,19 +85,27 @@ export class MachineRepository {
   ): Promise<Machine[]> {
     const itemCount = data.endIndex - data.startIndex + 1;
 
-    const machines = await this.databaseService.machine
-      .createManyAndReturn({
-        data: Array.from({ length: itemCount }, (_, i) => {
-          const currentIndex = data.startIndex + i;
+    const machines = await this.databaseService
+      .$transaction(async (tx) => {
+        const created = await tx.machine.createManyAndReturn({
+          data: Array.from({ length: itemCount }, (_, i) => {
+            const currentIndex = data.startIndex + i;
 
-          return {
-            uuid: crypto.randomUUID(),
-            type: data.type,
-            location: data.location,
-            gender: data.gender,
-            index: currentIndex,
-          };
-        }),
+            return {
+              uuid: crypto.randomUUID(),
+              type: data.type,
+              location: data.location,
+              gender: data.gender,
+              index: currentIndex,
+            };
+          }),
+        });
+
+        await tx.usingMachine.createMany({
+          data: created.map((machine) => ({ machineUuid: machine.uuid })),
+        });
+
+        return created;
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
