@@ -48,6 +48,24 @@ export class UsingMachineRepository {
       });
   }
 
+  // Get all machine usage records linked to a user
+  async getUsingMachinesByUser(userUuid: string): Promise<UsingMachine[]> {
+    return await this.databaseService.usingMachine
+      .findMany({
+        where: { userUuid },
+      })
+      .catch((error) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          this.logger.error(
+            `getUsingMachinesByUser prisma error: ${error.message}`,
+          );
+          throw new InternalServerErrorException('Database Error');
+        }
+        this.logger.error(`getUsingMachinesByUser error: ${error}`);
+        throw new InternalServerErrorException('Unknown Error');
+      });
+  }
+
   // Enable completion notification and link userUuid if non-member or matching user
   async enableMachineNotification(
     userUuid: string,
