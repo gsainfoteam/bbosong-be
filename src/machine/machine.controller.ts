@@ -41,6 +41,7 @@ import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 import { GetMachineResDto } from './dto/res/get-machine-res.dto';
 import { GetMachineDetailResDto } from './dto/res/get-machine-detail-res.dto';
 import { GetMachinePowerResDto } from './dto/res/get-machine-power-res.dto';
+import { GetUsingMachineResDto } from './dto/res/get-using-machine-res.dto';
 import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto';
 import { SuccessResDto } from '../common/dto/res/success-res.dto';
 
@@ -131,6 +132,26 @@ export class MachineController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async getMachines(): Promise<GetMachineResDto[]> {
     return await this.machineService.getMachines();
+  }
+
+  @Get('/me')
+  @ApiOperation({
+    summary: 'Get machines used by current user',
+    description:
+      "Retrieve all machine usage sessions linked to the authenticated user's account.",
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiOkResponse({
+    type: GetUsingMachineResDto,
+    isArray: true,
+    description: "Successfully retrieved the user's machine usage sessions.",
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async getUsingMachinesByUser(
+    @GetUser() user: User,
+  ): Promise<GetUsingMachineResDto[]> {
+    return await this.machineService.getUsingMachinesByUser(user.uuid);
   }
 
   @Get(':uuid')

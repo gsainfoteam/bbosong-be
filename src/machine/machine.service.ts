@@ -108,6 +108,11 @@ export class MachineService {
     this.ensureMachineOperationAffected(count);
   }
 
+  // Get machines currently being used by the given user
+  async getUsingMachinesByUser(userUuid: string): Promise<UsingMachine[]> {
+    return await this.usingMachineRepository.getUsingMachinesByUser(userUuid);
+  }
+
   async unlinkUserFromMachine(
     userUuid: string,
     machineUuid: string,
