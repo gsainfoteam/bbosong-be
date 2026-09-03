@@ -45,7 +45,7 @@ export class AuthController {
       'Authenticate user via Infoteam OAuth token and issue JWT access and refresh tokens.',
   })
   @ApiSecurity('oauth2')
-  @ApiOkResponse({ type: JwtToken, description: 'Login success' })
+  @ApiCreatedResponse({ type: JwtToken, description: 'Login success' })
   @ApiUnauthorizedResponse({ description: 'Invalid Infoteam Account token' })
   @ApiResponse({
     status: 403,
