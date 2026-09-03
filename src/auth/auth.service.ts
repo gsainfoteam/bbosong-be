@@ -154,14 +154,14 @@ export class AuthService {
     if (!token) throw new UnauthorizedException();
     const userinfo = await this.infoteamAccountService.getUserInfo(token);
 
-    // const consentData: ConsentData = {
-    //   agreedToTerms: body?.agreedToTerms,
-    //   agreedToPrivacy: body?.agreedToPrivacy,
-    //   termsVersion: body?.termsVersion,
-    //   privacyVersion: body?.privacyVersion,
-    // };
+    const consentData: ConsentData = {
+      agreedToTerms: body?.agreedToTerms,
+      agreedToPrivacy: body?.agreedToPrivacy,
+      termsVersion: body?.termsVersion,
+      privacyVersion: body?.privacyVersion,
+    };
 
-    // const latestPolicyVersions = await this.getLatestPolicyVersions();
+    const latestPolicyVersions = await this.getLatestPolicyVersions();
 
     const { user, refreshToken, sessionId, expiredAt } =
       await this.databaseService.$transaction(async (tx: PrismaTransaction) => {
@@ -177,17 +177,17 @@ export class AuthService {
           tx,
         );
 
-        // await this.validateAndHandleConsentsInTransaction(
-        //   user,
-        //   consentData,
-        //   latestPolicyVersions,
-        //   tx,
-        // );
+        await this.validateAndHandleConsentsInTransaction(
+          user,
+          consentData,
+          latestPolicyVersions,
+          tx,
+        );
 
-        // await this.userRefreshTokenRepository.deleteAllUserRefreshTokensInTx(
-        //   user.uuid,
-        //   tx,
-        // );
+        await this.userRefreshTokenRepository.deleteAllUserRefreshTokensInTx(
+          user.uuid,
+          tx,
+        );
 
         const token = this.generateOpaqueToken();
         const sessionId = this.generateSessionId();
