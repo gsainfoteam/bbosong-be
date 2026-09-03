@@ -14,6 +14,7 @@ import { Request, Response } from 'express';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiExtraModels,
   ApiForbiddenResponse,
   ApiInternalServerErrorResponse,
   ApiNotFoundResponse,
@@ -22,6 +23,7 @@ import {
   ApiResponse,
   ApiSecurity,
   ApiUnauthorizedResponse,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { User } from 'generated/prisma/client';
 import { AuthService } from './auth.service';
@@ -33,6 +35,7 @@ import { UserGuard } from './guard/user.guard';
 import { UpdateRoleReqDto } from './dto/req/update-role-req.dto';
 import { AdminGuard } from './guard/admin.guard';
 import { ConsentRequiredErrorDto } from './dto/res/consent-required-error.dto';
+import { GenderRequiredErrorDto } from './dto/res/gender-required-error.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -47,10 +50,16 @@ export class AuthController {
   @ApiSecurity('oauth2')
   @ApiCreatedResponse({ type: JwtToken, description: 'Login success' })
   @ApiUnauthorizedResponse({ description: 'Invalid Infoteam Account token' })
+  @ApiExtraModels(ConsentRequiredErrorDto, GenderRequiredErrorDto)
   @ApiResponse({
     status: 403,
-    description: 'Consent required',
-    type: ConsentRequiredErrorDto,
+    description: 'Consent required, or gender required for first-time login',
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(ConsentRequiredErrorDto) },
+        { $ref: getSchemaPath(GenderRequiredErrorDto) },
+      ],
+    },
   })
   @ApiInternalServerErrorResponse({ description: 'Internal Server Error' })
   async login(

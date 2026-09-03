@@ -42,6 +42,17 @@ export class UserRepository {
       });
   }
 
+  async findUserByStudentNumberInTx(
+    studentNumber: string,
+    tx: PrismaTransaction,
+  ): Promise<User | null> {
+    return await tx.user.findUnique({
+      where: {
+        studentNumber,
+      },
+    });
+  }
+
   async upsertUserInTx(
     {
       name,
@@ -49,13 +60,9 @@ export class UserRepository {
       studentNumber,
     }: Pick<User, 'name' | 'email' | 'studentNumber'>,
     gender: Gender | undefined,
+    existingUser: User | null,
     tx: PrismaTransaction,
   ): Promise<User> {
-    const existingUser = await tx.user.findUnique({
-      where: {
-        studentNumber,
-      },
-    });
     if (!existingUser && !gender) throw new GenderRequiredException();
     const uuid = existingUser?.uuid ?? crypto.randomUUID();
 
