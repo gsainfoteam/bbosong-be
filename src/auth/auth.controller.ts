@@ -14,12 +14,16 @@ import { Request, Response } from 'express';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiExtraModels,
   ApiForbiddenResponse,
+  ApiInternalServerErrorResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiResponse,
   ApiSecurity,
   ApiUnauthorizedResponse,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { User } from 'generated/prisma/client';
 import { AuthService } from './auth.service';
@@ -30,6 +34,8 @@ import { UserResDto } from './dto/res/user-res.dto';
 import { UserGuard } from './guard/user.guard';
 import { UpdateRoleReqDto } from './dto/req/update-role-req.dto';
 import { AdminGuard } from './guard/admin.guard';
+import { ConsentRequiredErrorDto } from './dto/res/consent-required-error.dto';
+import { GenderRequiredErrorDto } from './dto/res/gender-required-error.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -42,14 +48,20 @@ export class AuthController {
       'Authenticate user via Infoteam OAuth token and issue JWT access and refresh tokens.',
   })
   @ApiSecurity('oauth2')
-  @ApiCreatedResponse({
-    type: JwtToken,
-    description:
-      'User logged in successfully and refresh token cookie was set.',
+  @ApiCreatedResponse({ type: JwtToken, description: 'Login success' })
+  @ApiUnauthorizedResponse({ description: 'Invalid Infoteam Account token' })
+  @ApiExtraModels(ConsentRequiredErrorDto, GenderRequiredErrorDto)
+  @ApiResponse({
+    status: 403,
+    description: 'Consent required, or gender required for first-time login',
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(ConsentRequiredErrorDto) },
+        { $ref: getSchemaPath(GenderRequiredErrorDto) },
+      ],
+    },
   })
-  @ApiUnauthorizedResponse({
-    description: 'Invalid authorization header or token.',
-  })
+  @ApiInternalServerErrorResponse({ description: 'Internal Server Error' })
   async login(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,

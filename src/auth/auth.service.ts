@@ -154,20 +154,35 @@ export class AuthService {
     if (!token) throw new UnauthorizedException();
     const userinfo = await this.infoteamAccountService.getUserInfo(token);
 
-    // const consentData: ConsentData = {
-    //   agreedToTerms: body?.agreedToTerms,
-    //   agreedToPrivacy: body?.agreedToPrivacy,
-    //   termsVersion: body?.termsVersion,
-    //   privacyVersion: body?.privacyVersion,
-    // };
+    const consentData: ConsentData = {
+      agreedToTerms: body?.agreedToTerms,
+      agreedToPrivacy: body?.agreedToPrivacy,
+      termsVersion: body?.termsVersion,
+      privacyVersion: body?.privacyVersion,
+    };
 
-    // const latestPolicyVersions = await this.getLatestPolicyVersions();
+    const latestPolicyVersions = await this.getLatestPolicyVersions();
 
     const { user, refreshToken, sessionId, expiredAt } =
       await this.databaseService.$transaction(async (tx: PrismaTransaction) => {
+        const existingUser =
+          await this.userRepository.findUserByStudentNumberInTx(
+            userinfo.studentNumber,
+            tx,
+          );
+
+        const { termsRequirement, privacyRequirement } =
+          await this.checkConsentRequirements(
+            existingUser,
+            consentData,
+            latestPolicyVersions,
+            tx,
+          );
+
         const user = await this.userRepository.upsertUserInTx(
           userinfo,
           body?.gender,
+          existingUser,
           tx,
         );
         await this.auditLogService.createAuditLogInTx(
@@ -177,17 +192,18 @@ export class AuthService {
           tx,
         );
 
-        // await this.validateAndHandleConsentsInTransaction(
-        //   user,
-        //   consentData,
-        //   latestPolicyVersions,
-        //   tx,
-        // );
+        await this.saveConsentsIfNeeded(
+          user,
+          consentData,
+          termsRequirement,
+          privacyRequirement,
+          tx,
+        );
 
-        // await this.userRefreshTokenRepository.deleteAllUserRefreshTokensInTx(
-        //   user.uuid,
-        //   tx,
-        // );
+        await this.userRefreshTokenRepository.deleteAllUserRefreshTokensInTx(
+          user.uuid,
+          tx,
+        );
 
         const token = this.generateOpaqueToken();
         const sessionId = this.generateSessionId();
@@ -232,25 +248,32 @@ export class AuthService {
     );
   }
 
-  private async validateAndHandleConsentsInTransaction(
-    user: User,
+  private async checkConsentRequirements(
+    existingUser: User | null,
     consentData: ConsentData,
     latestPolicyVersions: LatestPolicyVersions,
     tx: PrismaTransaction,
-  ): Promise<void> {
-    const [latestTermsUserConsent, latestPrivacyUserConsent] =
-      await Promise.all([
-        this.userConsentRepository.getLatestUserConsentInTx(
-          user.uuid,
-          ConsentType.TERMS_OF_SERVICE,
-          tx,
-        ),
-        this.userConsentRepository.getLatestUserConsentInTx(
-          user.uuid,
-          ConsentType.PRIVACY_POLICY,
-          tx,
-        ),
-      ]);
+  ): Promise<{
+    termsRequirement: ConsentRequirement;
+    privacyRequirement: ConsentRequirement;
+  }> {
+    const [latestTermsUserConsent, latestPrivacyUserConsent]: [
+      UserConsent | null,
+      UserConsent | null,
+    ] = existingUser
+      ? await Promise.all([
+          this.userConsentRepository.getLatestUserConsentInTx(
+            existingUser.uuid,
+            ConsentType.TERMS_OF_SERVICE,
+            tx,
+          ),
+          this.userConsentRepository.getLatestUserConsentInTx(
+            existingUser.uuid,
+            ConsentType.PRIVACY_POLICY,
+            tx,
+          ),
+        ])
+      : [null, null];
 
     const termsRequirement = this.checkConsentRequirement(
       latestTermsUserConsent,
@@ -267,18 +290,32 @@ export class AuthService {
         termsRequirement,
         privacyRequirement,
       );
-
-      await this.saveUserConsentsInTransaction(
-        user,
-        {
-          termsVersion: consentData.termsVersion!,
-          privacyVersion: consentData.privacyVersion!,
-        },
-        termsRequirement.needsConsent,
-        privacyRequirement.needsConsent,
-        tx,
-      );
     }
+
+    return { termsRequirement, privacyRequirement };
+  }
+
+  private async saveConsentsIfNeeded(
+    user: User,
+    consentData: ConsentData,
+    termsRequirement: ConsentRequirement,
+    privacyRequirement: ConsentRequirement,
+    tx: PrismaTransaction,
+  ): Promise<void> {
+    if (!termsRequirement.needsConsent && !privacyRequirement.needsConsent) {
+      return;
+    }
+
+    await this.saveUserConsentsInTransaction(
+      user,
+      {
+        termsVersion: consentData.termsVersion!,
+        privacyVersion: consentData.privacyVersion!,
+      },
+      termsRequirement.needsConsent,
+      privacyRequirement.needsConsent,
+      tx,
+    );
   }
 
   private checkConsentRequirement(
