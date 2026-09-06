@@ -82,8 +82,8 @@ export class MachineService {
     await this.machineRepository.recordMachinePower(uuid, power);
   }
 
-  async getMachinePower(uuid: string): Promise<MachinePower[]> {
-    return await this.machineRepository.getMachinePowerInLastHour(uuid);
+  async getMachinePower(uuid: string, from?: Date): Promise<MachinePower[]> {
+    return await this.machineRepository.getMachinePowerFrom(uuid, from);
   }
 
   async enableMachineNotification(

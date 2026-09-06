@@ -227,15 +227,18 @@ export class MachineRepository {
       });
   }
 
-  async getMachinePowerInLastHour(uuid: string): Promise<MachinePower[]> {
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  async getMachinePowerFrom(
+    uuid: string,
+    from?: Date,
+  ): Promise<MachinePower[]> {
+    const startedAt = from ?? new Date(Date.now() - 60 * 60 * 1000);
 
     return await this.databaseService.machinePower
       .findMany({
         where: {
           machineUuid: uuid,
           recordedAt: {
-            gte: oneHourAgo,
+            gte: startedAt,
           },
         },
         orderBy: {
@@ -249,7 +252,7 @@ export class MachineRepository {
         ) {
           throw new NotFoundException('Machine not found.');
         }
-        this.logger.error(`getMachinePowerInLastHour error: ${error}`);
+        this.logger.error(`getMachinePowerFrom error: ${error}`);
         throw new InternalServerErrorException('Database Error');
       });
   }

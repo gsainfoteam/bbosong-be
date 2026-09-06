@@ -40,6 +40,7 @@ import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 import { GetMachineResDto } from './dto/res/get-machine-res.dto';
 import { GetMachineDetailResDto } from './dto/res/get-machine-detail-res.dto';
+import { GetMachinePowerReqDto } from './dto/req/get-machine-power-req.dto';
 import { GetMachinePowerResDto } from './dto/res/get-machine-power-res.dto';
 import { GetUsingMachineResDto } from './dto/res/get-using-machine-res.dto';
 import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto';
@@ -231,21 +232,21 @@ export class MachineController {
   @ApiOperation({
     summary: 'Get machine power history',
     description:
-      'Retrieve power consumption records for the last 1 hour for a machine.',
+      'Retrieve power consumption records for a machine. Without `startedAt`, records for the last 1 hour are returned. With `startedAt`, all records recorded at or after that time are returned.',
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @ApiOkResponse({
     type: GetMachinePowerResDto,
     isArray: true,
-    description:
-      'Successfully retrieved machine power records for the last 1 hour.',
+    description: 'Successfully retrieved machine power records.',
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async getMachinePower(
     @Param('uuid', ParseUUIDPipe) uuid: string,
+    @Query() query: GetMachinePowerReqDto,
   ): Promise<GetMachinePowerResDto[]> {
-    return await this.machineService.getMachinePower(uuid);
+    return await this.machineService.getMachinePower(uuid, query.startedAt);
   }
 
   @Post('/:uuid/register')
