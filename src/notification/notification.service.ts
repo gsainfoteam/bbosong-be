@@ -49,6 +49,12 @@ export class NotificationService {
     );
   }
 
+  async getUserLaundryRoomSubscriptions(userUuid: string) {
+    return await this.notificationRepository.getUserLaundryRoomSubscriptions(
+      userUuid,
+    );
+  }
+
   async deleteLaundryRoomSubscription(
     userUuid: string,
     location: Location,
