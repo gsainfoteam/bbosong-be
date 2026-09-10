@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   Headers,
   Post,
   UseGuards,
@@ -18,6 +19,8 @@ import { User } from 'generated/prisma/client';
 import { NotificationService } from './notification.service';
 import { SubscribeReqDto } from './dto/req/subscribe-req.dto';
 import { SubscribeLaundryRoomReqDto } from './dto/req/subscribe-laundry-room-req.dto';
+import { UnregisterPushReqDto } from './dto/req/unregister-push-req.dto';
+import { GetLaundryRoomSubscriptionResDto } from './dto/res/get-laundry-room-subscription-res.dto';
 import { SuccessResDto } from '../common/dto/res/success-res.dto';
 
 @Controller('notification')
@@ -60,10 +63,10 @@ export class NotificationController {
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async unregisterPush(
-    @Body('endpoint') endpoint: string,
+    @Body() dto: UnregisterPushReqDto,
     @GetUser() user: User,
   ) {
-    await this.notificationService.unregisterPush(user.uuid, endpoint);
+    await this.notificationService.unregisterPush(user.uuid, dto.endpoint);
     return { success: true };
   }
 
@@ -92,6 +95,29 @@ export class NotificationController {
       body.type,
     );
     return { success: true };
+  }
+
+  @Get('laundry-room')
+  @ApiOperation({
+    summary: 'Get laundry room availability subscriptions',
+    description:
+      'Retrieve every laundry room availability notification the authenticated user is currently subscribed to. A subscription is removed automatically once its notification has been sent.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiOkResponse({
+    type: GetLaundryRoomSubscriptionResDto,
+    isArray: true,
+    description:
+      'Successfully retrieved laundry room availability subscriptions.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async getLaundryRoomSubscriptions(
+    @GetUser() user: User,
+  ): Promise<GetLaundryRoomSubscriptionResDto[]> {
+    return await this.notificationService.getUserLaundryRoomSubscriptions(
+      user.uuid,
+    );
   }
 
   @Delete('laundry-room')
