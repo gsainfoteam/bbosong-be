@@ -111,6 +111,16 @@ export class NotificationRepository {
     );
   }
 
+  async getUserLaundryRoomSubscriptions(userUuid: string) {
+    return this.run(
+      'getUserLaundryRoomSubscriptions',
+      this.databaseService.laundryRoomSubscription.findMany({
+        where: { userUuid },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  }
+
   async getLaundryRoomSubscribers(
     location: Location,
     gender: Gender,
