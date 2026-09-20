@@ -2,6 +2,7 @@
 const nodeExternals = require('webpack-node-externals');
 const fs = require('node:fs');
 const glob = require('glob');
+const path = require('node:path');
 
 const modules = glob.sync('./node_modules/*/package.json', {
   ignore: ['node_modules/.*/**'],
@@ -33,8 +34,14 @@ module.exports = function (options) {
         '.js': ['.ts', '.js'],
       },
     },
+    entry: {
+      main: path.resolve(__dirname, 'src/main.ts'),
+      instrumentation: path.resolve(__dirname, 'src/instrumentation.ts'),
+    },
     output: {
       ...options.output,
+      path: path.resolve(__dirname, 'dist'),
+      filename: '[name].js',
       libraryTarget: 'commonjs2',
     },
   };
