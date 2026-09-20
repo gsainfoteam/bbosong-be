@@ -12,9 +12,11 @@ import { DatabaseService } from '../database.service';
 import { Gender, Prisma, Role, User } from 'generated/prisma/client';
 import { PrismaTransaction } from '../types';
 import { GenderRequiredException } from 'src/auth/exceptions/gender-required.exception';
+import { Trace } from '@gsainfoteam/nest-observability';
 
 @Loggable()
 @Injectable()
+@Trace()
 export class UserRepository {
   private readonly logger = new Logger(UserRepository.name);
 

@@ -6,9 +6,11 @@ import {
 } from '@nestjs/common';
 import { Prisma } from 'generated/prisma/client';
 import { PrismaTransaction } from '../types';
+import { Trace } from '@gsainfoteam/nest-observability';
 
 @Loggable()
 @Injectable()
+@Trace()
 export class AuditLogRepository {
   private readonly logger = new Logger(AuditLogRepository.name, {
     timestamp: true,

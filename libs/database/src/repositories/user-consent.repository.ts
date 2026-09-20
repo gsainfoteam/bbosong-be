@@ -6,9 +6,11 @@ import {
 } from '@nestjs/common';
 import { ConsentType, Prisma } from 'generated/prisma/client';
 import { PrismaTransaction } from '../types';
+import { Trace } from '@gsainfoteam/nest-observability';
 
 @Loggable()
 @Injectable()
+@Trace()
 export class UserConsentRepository {
   private readonly logger = new Logger(UserConsentRepository.name);
 

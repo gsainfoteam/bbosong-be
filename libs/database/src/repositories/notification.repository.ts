@@ -8,9 +8,11 @@ import { DatabaseService } from '@lib/database/database.service';
 
 import { Location, Gender, MachineType, Prisma } from 'generated/prisma/client';
 import { PrismaTransaction } from '@lib/database/types';
+import { Trace } from '@gsainfoteam/nest-observability';
 
 @Loggable()
 @Injectable()
+@Trace()
 export class NotificationRepository {
   private readonly logger = new Logger(NotificationRepository.name);
   constructor(private readonly databaseService: DatabaseService) {}

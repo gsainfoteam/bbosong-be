@@ -43,8 +43,10 @@ import { UserResDto } from './dto/res/user-res.dto';
 import { ConsentRequiredException } from './exceptions/consent-required.exception';
 import { AuditLogService } from '@lib/audit-log';
 import { NotificationService } from '../notification/notification.service';
+import { Trace } from '@gsainfoteam/nest-observability';
 
 @Injectable()
+@Trace()
 export class AuthService {
   private readonly userJwtSecret: string;
   private readonly userJwtExpire: StringValue;

@@ -9,8 +9,10 @@ import {
 } from 'generated/prisma/client';
 import { WebPushService } from './services/web-push.service';
 import { PrismaTransaction } from '@lib/database';
+import { Trace } from '@gsainfoteam/nest-observability';
 
 @Injectable()
+@Trace()
 export class NotificationService {
   constructor(
     private readonly notificationRepository: NotificationRepository,
