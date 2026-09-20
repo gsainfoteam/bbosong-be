@@ -16,9 +16,11 @@ import {
   CreateMachineReqDto,
   CreateMultipleMachinesReqDto,
 } from 'src/machine/dto/req/create-machine-req.dto';
+import { Trace } from '@gsainfoteam/nest-observability';
 
 @Loggable()
 @Injectable()
+@Trace()
 export class MachineRepository {
   private readonly logger = new Logger(MachineRepository.name);
   constructor(private readonly databaseService: DatabaseService) {}

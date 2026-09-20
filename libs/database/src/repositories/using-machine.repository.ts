@@ -6,9 +6,11 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '@lib/database/database.service';
 import { Prisma, UsingMachine } from 'generated/prisma/client';
+import { Trace } from '@gsainfoteam/nest-observability';
 
 @Loggable()
 @Injectable()
+@Trace()
 export class UsingMachineRepository {
   private readonly logger = new Logger(UsingMachineRepository.name);
   constructor(private readonly databaseService: DatabaseService) {}

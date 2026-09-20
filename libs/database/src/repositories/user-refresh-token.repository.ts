@@ -8,9 +8,11 @@ import {
 import { DatabaseService } from '../database.service';
 import { Prisma, UserRefreshToken } from 'generated/prisma/client';
 import { PrismaTransaction } from '../types';
+import { Trace } from '@gsainfoteam/nest-observability';
 
 @Loggable()
 @Injectable()
+@Trace()
 export class UserRefreshTokenRepository {
   private readonly logger = new Logger(UserRefreshTokenRepository.name);
   constructor(private readonly databaseService: DatabaseService) {}

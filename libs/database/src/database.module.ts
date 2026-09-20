@@ -10,6 +10,7 @@ import {
   NotificationRepository,
   UsingMachineRepository,
 } from './repositories';
+import { PrismaMetricsService } from '@gsainfoteam/nest-observability';
 
 @Module({
   imports: [ConfigModule],
@@ -22,6 +23,7 @@ import {
     MachineRepository,
     NotificationRepository,
     UsingMachineRepository,
+    PrismaMetricsService,
   ],
   exports: [
     DatabaseService,

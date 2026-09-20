@@ -20,9 +20,11 @@ import {
 } from './dto/req/create-machine-req.dto';
 import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
+import { Trace } from '@gsainfoteam/nest-observability';
 
 @Loggable()
 @Injectable()
+@Trace()
 export class MachineService {
   private readonly logger = new Logger(MachineService.name);
 
