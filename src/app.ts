@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import expressBasicAuth from 'express-basic-auth';
 import { AppModule } from './app.module';
+import { MetricsInterceptor } from '@gsainfoteam/nest-observability';
 
 export const makeApp = async () => {
   const app = await NestFactory.create(AppModule);
@@ -119,6 +120,8 @@ export const makeApp = async () => {
       },
     },
   });
+
+  app.useGlobalInterceptors(new MetricsInterceptor());
 
   return app;
 };
