@@ -112,6 +112,7 @@ export const makeApp = async () => {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document, {
     swaggerOptions: {
+      persistAuthorization: true,
       displayRequestDuration: true,
       oauth2RedirectUrl: `${configService.getOrThrow<string>('API_URL')}/api/oauth2-redirect.html`,
       initOAuth: {
