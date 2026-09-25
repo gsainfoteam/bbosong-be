@@ -1,4 +1,4 @@
-import { MatterClient } from '@matter-server/ws-client';
+import { MatterClient, MatterNode } from '@matter-server/ws-client';
 import {
   Inject,
   Injectable,
@@ -58,5 +58,16 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
     const client = this.getClient(siteId);
     const node = await client.commissionWithCode(payload, true);
     return node.serialNumber;
+  }
+
+  get(macAddress: string): MatterNode {
+    for (const client of this.clients.values()) {
+      for (const node of Object.values(client.nodes)) {
+        if (node.serialNumber === macAddress) {
+          return node;
+        }
+      }
+    }
+    throw new Error(`Node with mac address ${macAddress} not found`);
   }
 }
