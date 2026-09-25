@@ -22,13 +22,13 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     for (const site of this.options.sites) {
       const client = new MatterClient(site.wsUrl);
-      await client.connect();
+      await client.startListening();
       client.addEventListener('connection_lost', () => {
         console.log(`Connection lost for site ${site.id}`);
         setTimeout(() => {
           void (async () => {
             try {
-              await client.connect();
+              await client.startListening();
             } catch (error) {
               console.error(`Error reconnecting to site ${site.id}:`, error);
             }
