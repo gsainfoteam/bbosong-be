@@ -24,6 +24,7 @@
     "@aws-sdk/s3-request-presigner": "^3.992.0",
     "@codegenie/serverless-express": "^5.0.0",
     "@gsainfoteam/nest-observability": "^0.0.5",
+    "@matter-server/ws-client": "^1.4.0",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
