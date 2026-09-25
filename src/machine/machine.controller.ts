@@ -14,7 +14,6 @@ import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
-  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -22,7 +21,6 @@ import {
 } from '@nestjs/swagger';
 import { UserGuard } from '../auth/guard/user.guard';
 import { AdminGuard } from '../auth/guard/admin.guard';
-import { MachinePowerApiKeyGuard } from '../auth/guard/machine-power-api-key.guard';
 import { GetUser } from '../auth/decorator/get-user.decorator';
 import { User } from 'generated/prisma/client';
 import { MachineService } from './machine.service';
@@ -37,7 +35,6 @@ import {
   CreateMultipleMachinesResDto,
 } from './dto/res/create-machine-res.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
-import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 import { GetMachineResDto } from './dto/res/get-machine-res.dto';
 import { GetMachineDetailResDto } from './dto/res/get-machine-detail-res.dto';
 import { GetMachinePowerReqDto } from './dto/req/get-machine-power-req.dto';
@@ -204,28 +201,6 @@ export class MachineController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async deleteMachine(@Param('uuid', ParseUUIDPipe) uuid: string) {
     await this.machineService.deleteMachine(uuid);
-  }
-
-  @Post('/:uuid/power')
-  @ApiOperation({
-    summary: 'Record machine power',
-    description:
-      'Record real-time power consumption data from IoT sensors using API key.',
-  })
-  @UseGuards(MachinePowerApiKeyGuard)
-  @ApiHeader({
-    name: 'x-api-key',
-    description: 'API key for machine power sensors',
-    required: true,
-  })
-  @ApiCreatedResponse({ description: 'Machine power recorded successfully.' })
-  @ApiNotFoundResponse({ description: 'Machine not found.' })
-  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
-  async recordMachinePower(
-    @Param('uuid', ParseUUIDPipe) uuid: string,
-    @Body() body: CreatePowerReqDto,
-  ) {
-    await this.machineService.recordMachinePower(uuid, body);
   }
 
   @Get('/:uuid/power')
