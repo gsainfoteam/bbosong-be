@@ -212,6 +212,9 @@ export class MachineService {
     if (!machine.matterPayload) {
       throw new BadRequestException('Machine matter payload is not set.');
     }
+    if (machine.isCommissioned) {
+      throw new BadRequestException('Machine is already commissioned.');
+    }
 
     const macAddress = await this.matterConnectionService.commission(
       machine.location,
