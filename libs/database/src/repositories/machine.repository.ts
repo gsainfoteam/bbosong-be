@@ -1,5 +1,6 @@
 import { Loggable } from '@lib/logger';
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   InternalServerErrorException,
@@ -173,6 +174,19 @@ export class MachineRepository {
     posY?: number,
     matterPayload?: string,
   ) {
+    const machine = await this.databaseService.machine.findUnique({
+      where: { uuid },
+    });
+    if (!machine) {
+      throw new NotFoundException('Machine not found.');
+    }
+
+    if (machine.matterPayload && matterPayload) {
+      throw new BadRequestException(
+        'Cannot change matter payload after it is set.',
+      );
+    }
+
     await this.databaseService.machine
       .update({
         where: { uuid },
