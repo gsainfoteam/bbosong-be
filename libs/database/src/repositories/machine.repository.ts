@@ -66,6 +66,7 @@ export class MachineRepository {
       .create({
         data: {
           ...data,
+          isCommissioned: data.matterPayload ? false : undefined,
           currentUsage: { create: {} },
         },
       })
@@ -175,7 +176,13 @@ export class MachineRepository {
     await this.databaseService.machine
       .update({
         where: { uuid },
-        data: { isAvailable, posX, posY, matterPayload },
+        data: {
+          isAvailable,
+          posX,
+          posY,
+          matterPayload,
+          isCommissioned: matterPayload ? false : undefined,
+        },
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
