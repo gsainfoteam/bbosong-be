@@ -170,11 +170,12 @@ export class MachineRepository {
     isAvailable?: boolean,
     posX?: number,
     posY?: number,
+    matterPayload?: string,
   ) {
     await this.databaseService.machine
       .update({
         where: { uuid },
-        data: { isAvailable, posX, posY },
+        data: { isAvailable, posX, posY, matterPayload },
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
