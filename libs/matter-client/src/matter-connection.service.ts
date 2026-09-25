@@ -13,6 +13,7 @@ import {
 @Injectable()
 export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
   private readonly clients = new Map<string, MatterClient>();
+  private shouldReconnect = true;
 
   constructor(
     @Inject(MATTER_CLIENT_OPTIONS)
@@ -26,6 +27,7 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
       client.addEventListener('connection_lost', () => {
         console.log(`Connection lost for site ${site.id}`);
         setTimeout(() => {
+          if (!this.shouldReconnect) return;
           void (async () => {
             try {
               await client.startListening();
@@ -40,6 +42,7 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy() {
+    this.shouldReconnect = false;
     for (const client of this.clients.values()) {
       client.disconnect();
     }
