@@ -20,25 +20,27 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
     private readonly options: MatterClientModuleOptions,
   ) {}
 
-  onModuleInit() {
-    for (const site of this.options.sites) {
-      const client = new MatterClient(site.wsUrl);
-      void client.startListening();
-      client.addEventListener('connection_lost', () => {
-        console.log(`Connection lost for site ${site.id}`);
-        setTimeout(() => {
-          if (!this.shouldReconnect) return;
-          void (async () => {
-            try {
-              await client.startListening();
-            } catch (error) {
-              console.error(`Error reconnecting to site ${site.id}:`, error);
-            }
-          })();
-        }, 1000);
-      });
-      this.clients.set(site.id, client);
-    }
+  async onModuleInit() {
+    await Promise.all(
+      this.options.sites.map(async (site) => {
+        const client = new MatterClient(site.wsUrl);
+        await client.startListening();
+        client.addEventListener('connection_lost', () => {
+          console.log(`Connection lost for site ${site.id}`);
+          setTimeout(() => {
+            if (!this.shouldReconnect) return;
+            void (async () => {
+              try {
+                await client.startListening();
+              } catch (error) {
+                console.error(`Error reconnecting to site ${site.id}:`, error);
+              }
+            })();
+          }, 1000);
+        });
+        this.clients.set(site.id, client);
+      }),
+    );
   }
 
   onModuleDestroy() {
