@@ -181,7 +181,7 @@ export class MachineRepository {
       throw new NotFoundException('Machine not found.');
     }
 
-    if (machine.matterPayload && matterPayload) {
+    if (machine.matterPayload && (matterPayload || matterPayload === '')) {
       throw new BadRequestException(
         'Cannot change matter payload after it is set.',
       );
@@ -189,13 +189,12 @@ export class MachineRepository {
 
     await this.databaseService.machine
       .update({
-        where: { uuid },
+        where: { uuid, ...(matterPayload ? { matterPayload: null } : {}) },
         data: {
           isAvailable,
           posX,
           posY,
-          matterPayload,
-          isCommissioned: matterPayload ? false : undefined,
+          ...(matterPayload ? { matterPayload, isCommissioned: false } : {}),
         },
       })
       .catch((error) => {
