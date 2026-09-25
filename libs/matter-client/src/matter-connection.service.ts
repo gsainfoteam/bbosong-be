@@ -32,6 +32,9 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
             void (async () => {
               try {
                 await client.startListening();
+                if (!this.shouldReconnect) {
+                  client.disconnect();
+                }
               } catch (error) {
                 console.error(`Error reconnecting to site ${site.id}:`, error);
               }
