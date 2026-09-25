@@ -28,7 +28,9 @@
       "@lib/logger": ["libs/logger/src"],
       "@lib/logger/*": ["libs/logger/src/*"],
       "@lib/database": ["libs/database/src"],
-      "@lib/database/*": ["libs/database/src/*"]
+      "@lib/database/*": ["libs/database/src/*"],
+      "@lib/matter-client": ["libs/matter-client/src"],
+      "@lib/matter-client/*": ["libs/matter-client/src/*"]
     }
   }
 }
