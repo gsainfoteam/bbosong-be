@@ -120,15 +120,18 @@ model AuditLog {
 }
 
 model Machine {
-  uuid        String        @id @default(uuid()) @db.Uuid
-  type        MachineType   @map("type")
-  location    Location      @map("location")
-  gender      Gender        @map("gender")
-  index       Int           @map("index")
-  isAvailable Boolean       @default(true) @map("is_available")
-  posX        Int?          @map("pos_x")
-  posY        Int?          @map("pos_y")
-  status      MachineStatus @default(IDLE) @map("status")
+  uuid           String        @id @default(uuid()) @db.Uuid
+  type           MachineType   @map("type")
+  location       Location      @map("location")
+  gender         Gender        @map("gender")
+  index          Int           @map("index")
+  isAvailable    Boolean       @default(true) @map("is_available")
+  posX           Int?          @map("pos_x")
+  posY           Int?          @map("pos_y")
+  status         MachineStatus @default(IDLE) @map("status")
+  matterPayload  String?       @map("matter_payload")
+  macAddress     String?       @map("mac_address")
+  isCommissioned Boolean?      @map("is_commissioned")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
