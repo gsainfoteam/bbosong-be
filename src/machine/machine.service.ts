@@ -1,5 +1,10 @@
 import { Loggable } from '@lib/logger';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   Gender,
   Machine,
@@ -20,6 +25,7 @@ import {
 } from './dto/req/create-machine-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 import { Trace } from '@gsainfoteam/nest-observability';
+import { MatterConnectionService } from '@lib/matter-client/matter-connection.service';
 
 @Loggable()
 @Injectable()
@@ -31,6 +37,7 @@ export class MachineService {
     private readonly machineRepository: MachineRepository,
     private readonly usingMachineRepository: UsingMachineRepository,
     private readonly notificationService: NotificationService,
+    private readonly matterConnectionService: MatterConnectionService,
   ) {}
 
   async laundryRoomStatusByGender(
@@ -194,6 +201,25 @@ export class MachineService {
   async getUsingMachine(machineUuid: string): Promise<UsingMachine | null> {
     return await this.usingMachineRepository.getUsingMachineByMachineUuid(
       machineUuid,
+    );
+  }
+
+  async commissionMachine(machineUuid: string): Promise<void> {
+    const machine = await this.machineRepository.getMachine(machineUuid);
+    if (!machine) {
+      throw new NotFoundException('Machine not found.');
+    }
+    if (!machine.matterPayload) {
+      throw new BadRequestException('Machine matter payload is not set.');
+    }
+
+    const macAddress = await this.matterConnectionService.commission(
+      machine.location,
+      machine.matterPayload,
+    );
+    await this.machineRepository.updateMachineCommissioned(
+      machineUuid,
+      macAddress,
     );
   }
 }
