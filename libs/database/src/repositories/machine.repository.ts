@@ -259,4 +259,21 @@ export class MachineRepository {
         throw new InternalServerErrorException('Database Error');
       });
   }
+
+  async updateMachineCommissioned(
+    uuid: string,
+    macAddress: string,
+  ): Promise<void> {
+    await this.databaseService.machine.update({
+      where: { uuid },
+      data: { macAddress, isCommissioned: true },
+    });
+  }
+
+  async resetMachineCommissioned(uuid: string): Promise<void> {
+    await this.databaseService.machine.update({
+      where: { uuid },
+      data: { isCommissioned: false },
+    });
+  }
 }

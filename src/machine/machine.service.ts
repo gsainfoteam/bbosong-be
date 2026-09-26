@@ -1,37 +1,66 @@
-import { Loggable } from '@lib/logger';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import {
-  Gender,
-  Machine,
-  MachinePower,
-  UsingMachine,
-} from 'generated/prisma/client';
+import { Trace } from '@gsainfoteam/nest-observability';
 import { MachineRepository } from '@lib/database/repositories/machine.repository';
 import { UsingMachineRepository } from '@lib/database/repositories/using-machine.repository';
 import {
   LaundryRoomSummary,
   MachineWithUsage,
 } from '@lib/database/types/machine.type';
-import { formatError } from '../common/utils/format-error.util';
+import { Loggable } from '@lib/logger';
+import { MatterConnectionService } from '@lib/matter-client/matter-connection.service';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
+import {
+  Gender,
+  Machine,
+  MachinePower,
+  UsingMachine,
+} from 'generated/prisma/client';
+import { formatError } from 'src/common/utils/format-error.util';
 import { NotificationService } from '../notification/notification.service';
 import {
   CreateMachineReqDto,
   CreateMultipleMachinesReqDto,
 } from './dto/req/create-machine-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
-import { Trace } from '@gsainfoteam/nest-observability';
 
 @Loggable()
 @Injectable()
 @Trace()
-export class MachineService {
+export class MachineService implements OnModuleInit {
   private readonly logger = new Logger(MachineService.name);
 
   constructor(
     private readonly machineRepository: MachineRepository,
     private readonly usingMachineRepository: UsingMachineRepository,
     private readonly notificationService: NotificationService,
+    private readonly matterConnectionService: MatterConnectionService,
   ) {}
+
+  async onModuleInit() {
+    const machines = await this.machineRepository.getMachines();
+    for (const machine of machines) {
+      if (machine.isCommissioned) {
+        if (!machine.macAddress) {
+          throw new Error(
+            `Machine ${machine.uuid} mac address is not set but it is commissioned`,
+          );
+        }
+        try {
+          this.matterConnectionService.get(machine.macAddress);
+        } catch (error) {
+          console.error(
+            `Machine ${machine.uuid} connection failed: ${error}, set isCommissioned to false`,
+          );
+          await this.machineRepository.resetMachineCommissioned(machine.uuid);
+        }
+      }
+    }
+  }
 
   async laundryRoomStatusByGender(
     gender: Gender,
@@ -194,6 +223,28 @@ export class MachineService {
   async getUsingMachine(machineUuid: string): Promise<UsingMachine | null> {
     return await this.usingMachineRepository.getUsingMachineByMachineUuid(
       machineUuid,
+    );
+  }
+
+  async commissionMachine(machineUuid: string): Promise<void> {
+    const machine = await this.machineRepository.getMachine(machineUuid);
+    if (!machine) {
+      throw new NotFoundException('Machine not found.');
+    }
+    if (!machine.matterPayload) {
+      throw new BadRequestException('Machine matter payload is not set.');
+    }
+    if (machine.isCommissioned) {
+      throw new BadRequestException('Machine is already commissioned.');
+    }
+
+    const macAddress = await this.matterConnectionService.commission(
+      machine.location,
+      machine.matterPayload,
+    );
+    await this.machineRepository.updateMachineCommissioned(
+      machineUuid,
+      macAddress,
     );
   }
 }

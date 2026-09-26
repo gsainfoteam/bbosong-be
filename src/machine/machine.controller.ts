@@ -311,4 +311,19 @@ export class MachineController {
     await this.machineService.unlinkUserFromMachine(user.uuid, machineUuid);
     return { success: true };
   }
+
+  @Post('/:uuid/commission')
+  @ApiOperation({
+    summary: 'Commission a machine',
+    description: 'Commission a machine by its UUID (Admin only).',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(AdminGuard)
+  @ApiCreatedResponse({ description: 'Machine commissioned successfully.' })
+  @ApiNotFoundResponse({ description: 'Machine not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async commissionMachine(@Param('uuid', ParseUUIDPipe) machineUuid: string) {
+    await this.machineService.commissionMachine(machineUuid);
+    return { success: true };
+  }
 }
