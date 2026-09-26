@@ -19,8 +19,8 @@ import { MachineService } from './machine.service';
           .getOrThrow<string>('MATTER_SITES')
           .split(',')
           .map((config) => {
-            const [id, ...urlParts] = config.split('=');
-            const wsUrl = urlParts.join('=');
+            const [id, ...urlParts] = config.split(':');
+            const wsUrl = urlParts.join(':');
             return { id, wsUrl };
           }),
       }),
