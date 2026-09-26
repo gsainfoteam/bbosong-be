@@ -249,7 +249,7 @@ export class MachineService implements OnModuleInit {
     );
   }
 
-  @Cron(CronExpression.EVERY_10_SECONDS)
+  @Cron(CronExpression.EVERY_10_SECONDS, { waitForCompletion: true })
   async pullMachinePower() {
     const machines = await this.machineRepository.getMachines({
       commissionedOnly: true,
