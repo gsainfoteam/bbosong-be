@@ -24,7 +24,12 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
     await Promise.all(
       this.options.sites.map(async (site) => {
         const client = new MatterClient(site.wsUrl);
-        await client.startListening();
+        try {
+          await client.startListening();
+        } catch (error) {
+          client.disconnect();
+          throw error;
+        }
         client.addEventListener('connection_lost', () => {
           console.log(`Connection lost for site ${site.id}`);
           setTimeout(() => {
