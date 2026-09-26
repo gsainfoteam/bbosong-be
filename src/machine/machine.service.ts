@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import {
   Gender,
@@ -30,7 +31,7 @@ import { MatterConnectionService } from '@lib/matter-client/matter-connection.se
 @Loggable()
 @Injectable()
 @Trace()
-export class MachineService {
+export class MachineService implements OnModuleInit {
   private readonly logger = new Logger(MachineService.name);
 
   constructor(
@@ -39,6 +40,30 @@ export class MachineService {
     private readonly notificationService: NotificationService,
     private readonly matterConnectionService: MatterConnectionService,
   ) {}
+
+  async onModuleInit() {
+    const machines = await this.machineRepository.getMachines();
+    for (const machine of machines) {
+      if (machine.isCommissioned) {
+        if (!machine.macAddress) {
+          throw new Error(
+            `Machine ${machine.uuid} mac address is not set but it is commissioned`,
+          );
+        }
+        try {
+          this.matterConnectionService.get(machine.macAddress);
+        } catch (error) {
+          console.error(
+            `Machine ${machine.uuid} connection failed: ${formatError(error)}, set isCommissioned to false`,
+          );
+          await this.machineRepository.updateMachineCommissioned(
+            machine.uuid,
+            null,
+          );
+        }
+      }
+    }
+  }
 
   async laundryRoomStatusByGender(
     gender: Gender,
