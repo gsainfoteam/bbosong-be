@@ -319,7 +319,7 @@ export class MachineController {
   })
   @ApiBearerAuth('user')
   @UseGuards(AdminGuard)
-  @ApiOkResponse({ description: 'Machine commissioned successfully.' })
+  @ApiCreatedResponse({ description: 'Machine commissioned successfully.' })
   @ApiNotFoundResponse({ description: 'Machine not found.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async commissionMachine(@Param('uuid', ParseUUIDPipe) machineUuid: string) {
