@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module';
 import { MachineModule } from './machine/machine.module';
 import { NotificationModule } from './notification/notification.module';
 import { HealthModule } from './health/health.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { HealthModule } from './health/health.module';
     MachineModule,
     NotificationModule,
     HealthModule,
+    ScheduleModule.forRoot(),
   ],
 })
 export class AppModule {}
