@@ -4,9 +4,10 @@ const fs = require('node:fs');
 const glob = require('glob');
 const path = require('node:path');
 
-const modules = glob.sync('./node_modules/*/package.json', {
-  ignore: ['node_modules/.*/**'],
-});
+const modules = glob.sync(
+  ['./node_modules/*/package.json', './node_modules/@*/*/package.json'],
+  { ignore: ['node_modules/.*/**'] },
+);
 const packages = modules
   .map((module) => {
     try {
