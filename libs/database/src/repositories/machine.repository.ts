@@ -128,9 +128,14 @@ export class MachineRepository {
     return machines.sort((a, b) => a.index - b.index);
   }
 
-  async getMachines(): Promise<Machine[]> {
+  async getMachines({
+    commissionedOnly = false,
+  }: { commissionedOnly?: boolean } = {}): Promise<Machine[]> {
     return await this.databaseService.machine
       .findMany({
+        where: {
+          ...(commissionedOnly ? { isCommissioned: true } : {}),
+        },
         orderBy: [
           { location: 'asc' },
           { gender: 'asc' },
@@ -227,6 +232,26 @@ export class MachineRepository {
         }
         this.logger.error(`deleteMachine error: ${error}`);
         throw new InternalServerErrorException('Unknown Error');
+      });
+  }
+
+  async recordMachinePower(uuid: string, power: number): Promise<void> {
+    await this.databaseService.machinePower
+      .create({
+        data: {
+          machineUuid: uuid,
+          power,
+        },
+      })
+      .catch((error) => {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2003'
+        ) {
+          throw new NotFoundException('Machine not found.');
+        }
+        this.logger.error(`recordMachinePower error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
       });
   }
 

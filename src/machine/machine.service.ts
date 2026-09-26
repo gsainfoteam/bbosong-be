@@ -27,6 +27,7 @@ import {
   CreateMultipleMachinesReqDto,
 } from './dto/req/create-machine-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Loggable()
 @Injectable()
@@ -246,5 +247,35 @@ export class MachineService implements OnModuleInit {
       machineUuid,
       macAddress,
     );
+  }
+
+  @Cron(CronExpression.EVERY_10_SECONDS, { waitForCompletion: true })
+  async pullMachinePower() {
+    const machines = await this.machineRepository.getMachines({
+      commissionedOnly: true,
+    });
+    for (const machine of machines) {
+      if (!machine.macAddress) {
+        this.logger.error(
+          `Machine ${machine.uuid} mac address is not set but it is commissioned`,
+        );
+        continue;
+      }
+      try {
+        const node = this.matterConnectionService.get(machine.macAddress);
+        const path = Object.keys(node.attributes).find((k) =>
+          k.endsWith('/144/8'),
+        );
+        const raw = path ? node.attributes[path] : undefined;
+        const watts = typeof raw === 'number' ? raw / 1000 : null;
+        if (watts === null) {
+          throw new Error(`Machine ${machine.uuid} power is not set`);
+        }
+        await this.machineRepository.recordMachinePower(machine.uuid, watts);
+      } catch (error) {
+        this.logger.error(formatError(error));
+        continue;
+      }
+    }
   }
 }
