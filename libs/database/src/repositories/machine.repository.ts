@@ -262,11 +262,18 @@ export class MachineRepository {
 
   async updateMachineCommissioned(
     uuid: string,
-    macAddress: string | null,
+    macAddress: string,
   ): Promise<void> {
     await this.databaseService.machine.update({
       where: { uuid },
-      data: { macAddress, isCommissioned: macAddress ? true : false },
+      data: { macAddress, isCommissioned: true },
+    });
+  }
+
+  async resetMachineCommissioned(uuid: string): Promise<void> {
+    await this.databaseService.machine.update({
+      where: { uuid },
+      data: { isCommissioned: false },
     });
   }
 }

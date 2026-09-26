@@ -56,10 +56,7 @@ export class MachineService implements OnModuleInit {
           console.error(
             `Machine ${machine.uuid} connection failed: ${error}, set isCommissioned to false`,
           );
-          await this.machineRepository.updateMachineCommissioned(
-            machine.uuid,
-            null,
-          );
+          await this.machineRepository.resetMachineCommissioned(machine.uuid);
         }
       }
     }
