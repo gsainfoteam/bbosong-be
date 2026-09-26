@@ -261,17 +261,21 @@ export class MachineService implements OnModuleInit {
         );
         continue;
       }
-      const node = this.matterConnectionService.get(machine.macAddress);
-      const path = Object.keys(node.attributes).find((k) =>
-        k.endsWith('/144/8'),
-      );
-      const raw = path ? node.attributes[path] : undefined;
-      const watts = typeof raw === 'number' ? raw / 1000 : null;
-      if (watts === null) {
-        this.logger.error(`Machine ${machine.uuid} power is not set`);
+      try {
+        const node = this.matterConnectionService.get(machine.macAddress);
+        const path = Object.keys(node.attributes).find((k) =>
+          k.endsWith('/144/8'),
+        );
+        const raw = path ? node.attributes[path] : undefined;
+        const watts = typeof raw === 'number' ? raw / 1000 : null;
+        if (watts === null) {
+          throw new Error(`Machine ${machine.uuid} power is not set`);
+        }
+        await this.machineRepository.recordMachinePower(machine.uuid, watts);
+      } catch (error) {
+        this.logger.error(formatError(error));
         continue;
       }
-      await this.machineRepository.recordMachinePower(machine.uuid, watts);
     }
   }
 }
