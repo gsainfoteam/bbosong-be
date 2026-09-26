@@ -1,4 +1,12 @@
+import { Trace } from '@gsainfoteam/nest-observability';
+import { MachineRepository } from '@lib/database/repositories/machine.repository';
+import { UsingMachineRepository } from '@lib/database/repositories/using-machine.repository';
+import {
+  LaundryRoomSummary,
+  MachineWithUsage,
+} from '@lib/database/types/machine.type';
 import { Loggable } from '@lib/logger';
+import { MatterConnectionService } from '@lib/matter-client/matter-connection.service';
 import {
   BadRequestException,
   Injectable,
@@ -12,21 +20,13 @@ import {
   MachinePower,
   UsingMachine,
 } from 'generated/prisma/client';
-import { MachineRepository } from '@lib/database/repositories/machine.repository';
-import { UsingMachineRepository } from '@lib/database/repositories/using-machine.repository';
-import {
-  LaundryRoomSummary,
-  MachineWithUsage,
-} from '@lib/database/types/machine.type';
-import { formatError } from '../common/utils/format-error.util';
+import { formatError } from 'src/common/utils/format-error.util';
 import { NotificationService } from '../notification/notification.service';
 import {
   CreateMachineReqDto,
   CreateMultipleMachinesReqDto,
 } from './dto/req/create-machine-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
-import { Trace } from '@gsainfoteam/nest-observability';
-import { MatterConnectionService } from '@lib/matter-client/matter-connection.service';
 
 @Loggable()
 @Injectable()
@@ -54,7 +54,7 @@ export class MachineService implements OnModuleInit {
           this.matterConnectionService.get(machine.macAddress);
         } catch (error) {
           console.error(
-            `Machine ${machine.uuid} connection failed: ${formatError(error)}, set isCommissioned to false`,
+            `Machine ${machine.uuid} connection failed: ${error}, set isCommissioned to false`,
           );
           await this.machineRepository.updateMachineCommissioned(
             machine.uuid,
