@@ -14,10 +14,13 @@ import {
 const ELECTRICAL_POWER_CLUSTER_ID = '144';
 const ACTIVE_POWER_ATTRIBUTE_ID = '8';
 
+type PowerListener = (macAddress: string, power: number) => void;
+
 @Injectable()
 export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
   private readonly clients = new Map<string, MatterClient>();
   private readonly lastPowerByMac = new Map<string, number>();
+  private readonly powerListeners = new Set<PowerListener>();
   private shouldReconnect = true;
 
   constructor(
@@ -51,13 +54,19 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
             })();
           }, 1000);
         });
+        client.addEventListener('nodes_changed', () => {
+          this.emitPowerChanges();
+        });
         this.clients.set(site.id, client);
       }),
     );
+    this.emitPowerChanges();
   }
 
   onModuleDestroy() {
     this.shouldReconnect = false;
+    this.powerListeners.clear();
+    this.lastPowerByMac.clear();
     for (const client of this.clients.values()) {
       client.disconnect();
     }
@@ -89,28 +98,16 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
     throw new Error(`Node with mac address ${macAddress} not found`);
   }
 
-  addPowerListener(
-    callback: (macAddress: string, power: number) => void,
-  ): () => void {
-    this.updateLastPower();
-
-    const unsubscribers: Array<() => void> = [];
-    for (const client of this.clients.values()) {
-      unsubscribers.push(
-        client.addEventListener('nodes_changed', () => {
-          this.updateLastPower(callback);
-        }),
-      );
-    }
-
+  addPowerListener(callback: PowerListener): () => void {
+    this.powerListeners.add(callback);
     return () => {
-      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      this.powerListeners.delete(callback);
     };
   }
 
-  private updateLastPower(
-    callback?: (macAddress: string, power: number) => void,
-  ): void {
+  private emitPowerChanges(): void {
+    const updates: Array<{ macAddress: string; power: number }> = [];
+
     for (const client of this.clients.values()) {
       for (const node of Object.values(client.nodes)) {
         const macAddress = node.serialNumber;
@@ -119,7 +116,20 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
         if (this.lastPowerByMac.get(macAddress) === power) continue;
 
         this.lastPowerByMac.set(macAddress, power);
-        callback?.(macAddress, power);
+        updates.push({ macAddress, power });
+      }
+    }
+
+    if (updates.length === 0) return;
+
+    const listeners = [...this.powerListeners];
+    for (const { macAddress, power } of updates) {
+      for (const listener of listeners) {
+        try {
+          listener(macAddress, power);
+        } catch (error) {
+          console.error(`Power listener failed for mac ${macAddress}:`, error);
+        }
       }
     }
   }
