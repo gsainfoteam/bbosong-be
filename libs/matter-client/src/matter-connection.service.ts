@@ -10,9 +10,14 @@ import {
   MatterClientModuleOptions,
 } from './matter-client.options';
 
+/** ElectricalPowerMeasurement cluster / ActivePower attribute. Path: `{endpoint}/144/8` */
+const ELECTRICAL_POWER_CLUSTER_ID = '144';
+const ACTIVE_POWER_ATTRIBUTE_ID = '8';
+
 @Injectable()
 export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
   private readonly clients = new Map<string, MatterClient>();
+  private readonly lastPowerByMac = new Map<string, number>();
   private shouldReconnect = true;
 
   constructor(
@@ -82,5 +87,56 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
       }
     }
     throw new Error(`Node with mac address ${macAddress} not found`);
+  }
+
+  addPowerListener(
+    callback: (macAddress: string, power: number) => void,
+  ): () => void {
+    this.updateLastPower();
+
+    const unsubscribers: Array<() => void> = [];
+    for (const client of this.clients.values()) {
+      unsubscribers.push(
+        client.addEventListener('nodes_changed', () => {
+          this.updateLastPower(callback);
+        }),
+      );
+    }
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }
+
+  private updateLastPower(
+    callback?: (macAddress: string, power: number) => void,
+  ): void {
+    for (const client of this.clients.values()) {
+      for (const node of Object.values(client.nodes)) {
+        const macAddress = node.serialNumber;
+        const power = this.getActivePower(node);
+        if (!macAddress || power === undefined) continue;
+        if (this.lastPowerByMac.get(macAddress) === power) continue;
+
+        this.lastPowerByMac.set(macAddress, power);
+        callback?.(macAddress, power);
+      }
+    }
+  }
+
+  private getActivePower(node: MatterNode): number | undefined {
+    for (const [path, value] of Object.entries(node.attributes)) {
+      const [, cluster, attribute] = path.split('/');
+      if (
+        cluster !== ELECTRICAL_POWER_CLUSTER_ID ||
+        attribute !== ACTIVE_POWER_ATTRIBUTE_ID
+      ) {
+        continue;
+      }
+
+      if (typeof value === 'number') return value;
+      if (typeof value === 'bigint') return Number(value);
+    }
+    return undefined;
   }
 }
