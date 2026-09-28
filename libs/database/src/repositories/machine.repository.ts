@@ -155,17 +155,6 @@ export class MachineRepository {
       });
   }
 
-  async getMachineByMacAddress(macAddress: string): Promise<Machine | null> {
-    return await this.databaseService.machine
-      .findFirst({
-        where: { macAddress },
-      })
-      .catch((error) => {
-        this.logger.error(`getMachineByMacAddress error: ${error}`);
-        throw new InternalServerErrorException('Database Error');
-      });
-  }
-
   async getMachineWithUsage(uuid: string): Promise<MachineWithUsage | null> {
     return await this.databaseService.machine
       .findUnique({
@@ -257,6 +246,31 @@ export class MachineRepository {
           throw new NotFoundException('Machine not found.');
         }
         this.logger.error(`recordMachinePower error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
+  }
+
+  async recordMachinePowerByMacAddress(
+    macAddress: string,
+    power: number,
+  ): Promise<void> {
+    await this.databaseService.machinePower
+      .create({
+        data: {
+          power,
+          machine: {
+            connect: { macAddress },
+          },
+        },
+      })
+      .catch((error) => {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2025'
+        ) {
+          throw new NotFoundException('Machine not found.');
+        }
+        this.logger.error(`recordMachinePowerByMacAddress error: ${error}`);
         throw new InternalServerErrorException('Database Error');
       });
   }

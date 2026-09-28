@@ -78,12 +78,8 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     power: number,
   ): Promise<void> {
     try {
-      const machine =
-        await this.machineRepository.getMachineByMacAddress(macAddress);
-      if (!machine) return;
-
-      await this.machineRepository.recordMachinePower(
-        machine.uuid,
+      await this.machineRepository.recordMachinePowerByMacAddress(
+        macAddress,
         power / 1000,
       );
     } catch (error: unknown) {
