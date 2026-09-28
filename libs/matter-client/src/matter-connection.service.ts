@@ -14,7 +14,10 @@ import {
 const ELECTRICAL_POWER_CLUSTER_ID = '144';
 const ACTIVE_POWER_ATTRIBUTE_ID = '8';
 
-type PowerListener = (macAddress: string, power: number) => void;
+type PowerListener = (
+  macAddress: string,
+  power: number,
+) => void | Promise<void>;
 
 @Injectable()
 export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
@@ -47,7 +50,9 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
                 await client.startListening();
                 if (!this.shouldReconnect) {
                   client.disconnect();
+                  return;
                 }
+                this.emitPowerChanges();
               } catch (error) {
                 console.error(`Error reconnecting to site ${site.id}:`, error);
               }
@@ -60,7 +65,6 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
         this.clients.set(site.id, client);
       }),
     );
-    this.emitPowerChanges();
   }
 
   onModuleDestroy() {
@@ -100,12 +104,24 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
 
   addPowerListener(callback: PowerListener): () => void {
     this.powerListeners.add(callback);
+    void this.dispatchPowerUpdates(this.collectPowerUpdates(false), [
+      callback,
+    ]);
     return () => {
       this.powerListeners.delete(callback);
     };
   }
 
   private emitPowerChanges(): void {
+    void this.dispatchPowerUpdates(this.collectPowerUpdates(true), [
+      ...this.powerListeners,
+    ]);
+  }
+
+  private collectPowerUpdates(onlyChanged: boolean): Array<{
+    macAddress: string;
+    power: number;
+  }> {
     const updates: Array<{ macAddress: string; power: number }> = [];
 
     for (const client of this.clients.values()) {
@@ -113,20 +129,28 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
         const macAddress = node.serialNumber;
         const power = this.getActivePower(node);
         if (!macAddress || power === undefined) continue;
-        if (this.lastPowerByMac.get(macAddress) === power) continue;
+        if (onlyChanged && this.lastPowerByMac.get(macAddress) === power) {
+          continue;
+        }
 
-        this.lastPowerByMac.set(macAddress, power);
         updates.push({ macAddress, power });
       }
     }
 
-    if (updates.length === 0) return;
+    return updates;
+  }
 
-    const listeners = [...this.powerListeners];
+  private async dispatchPowerUpdates(
+    updates: Array<{ macAddress: string; power: number }>,
+    listeners: PowerListener[],
+  ): Promise<void> {
+    if (updates.length === 0 || listeners.length === 0) return;
+
     for (const { macAddress, power } of updates) {
+      this.lastPowerByMac.set(macAddress, power);
       for (const listener of listeners) {
         try {
-          listener(macAddress, power);
+          await Promise.resolve(listener(macAddress, power));
         } catch (error) {
           console.error(`Power listener failed for mac ${macAddress}:`, error);
         }
