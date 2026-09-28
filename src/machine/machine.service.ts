@@ -64,9 +64,9 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.unsubscribePowerListener =
-      this.matterConnectionService.addPowerListener((macAddress, power) => {
-        void this.handlePowerUpdate(macAddress, power);
-      });
+      this.matterConnectionService.addPowerListener((macAddress, power) =>
+        this.handlePowerUpdate(macAddress, power),
+      );
   }
 
   onModuleDestroy() {

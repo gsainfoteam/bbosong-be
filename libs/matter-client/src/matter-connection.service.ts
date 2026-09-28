@@ -5,6 +5,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { concatMap, groupBy, mergeMap, Subject, Subscription } from 'rxjs';
 import {
   MATTER_CLIENT_OPTIONS,
   MatterClientModuleOptions,
@@ -19,11 +20,24 @@ type PowerListener = (
   power: number,
 ) => void | Promise<void>;
 
+type PowerUpdate = {
+  macAddress: string;
+  power: number;
+};
+
+type PowerListenerStream = {
+  updates$: Subject<PowerUpdate>;
+  subscription: Subscription;
+};
+
 @Injectable()
 export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
   private readonly clients = new Map<string, MatterClient>();
   private readonly lastPowerByMac = new Map<string, number>();
-  private readonly powerListeners = new Set<PowerListener>();
+  private readonly listenerStreams = new Map<
+    PowerListener,
+    PowerListenerStream
+  >();
   private shouldReconnect = true;
 
   constructor(
@@ -69,7 +83,9 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     this.shouldReconnect = false;
-    this.powerListeners.clear();
+    for (const callback of [...this.listenerStreams.keys()]) {
+      this.removePowerListener(callback);
+    }
     this.lastPowerByMac.clear();
     for (const client of this.clients.values()) {
       client.disconnect();
@@ -103,26 +119,56 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
   }
 
   addPowerListener(callback: PowerListener): () => void {
-    this.powerListeners.add(callback);
-    void this.dispatchPowerUpdates(this.collectPowerUpdates(false), [
-      callback,
-    ]);
-    return () => {
-      this.powerListeners.delete(callback);
-    };
+    const stream = this.createListenerStream(callback);
+    this.listenerStreams.set(callback, stream);
+    this.enqueuePowerUpdates(this.collectPowerUpdates(false), stream);
+    return () => this.removePowerListener(callback);
+  }
+
+  private createListenerStream(callback: PowerListener): PowerListenerStream {
+    const updates$ = new Subject<PowerUpdate>();
+    const subscription = updates$
+      .pipe(
+        groupBy((update) => update.macAddress),
+        mergeMap((group$) =>
+          group$.pipe(
+            concatMap(async ({ macAddress, power }) => {
+              try {
+                await Promise.resolve(callback(macAddress, power));
+              } catch (error) {
+                console.error(
+                  `Power listener failed for mac ${macAddress}:`,
+                  error,
+                );
+              }
+            }),
+          ),
+        ),
+      )
+      .subscribe({
+        error: (error) => {
+          console.error('Power listener pipeline failed:', error);
+        },
+      });
+
+    return { updates$, subscription };
+  }
+
+  private removePowerListener(callback: PowerListener): void {
+    const stream = this.listenerStreams.get(callback);
+    if (!stream) return;
+
+    stream.updates$.complete();
+    stream.subscription.unsubscribe();
+    this.listenerStreams.delete(callback);
   }
 
   private emitPowerChanges(): void {
-    void this.dispatchPowerUpdates(this.collectPowerUpdates(true), [
-      ...this.powerListeners,
-    ]);
+    this.enqueuePowerUpdates(this.collectPowerUpdates(true));
   }
 
-  private collectPowerUpdates(onlyChanged: boolean): Array<{
-    macAddress: string;
-    power: number;
-  }> {
-    const updates: Array<{ macAddress: string; power: number }> = [];
+  private collectPowerUpdates(onlyChanged: boolean): PowerUpdate[] {
+    const updates: PowerUpdate[] = [];
 
     for (const client of this.clients.values()) {
       for (const node of Object.values(client.nodes)) {
@@ -140,20 +186,15 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
     return updates;
   }
 
-  private async dispatchPowerUpdates(
-    updates: Array<{ macAddress: string; power: number }>,
-    listeners: PowerListener[],
-  ): Promise<void> {
-    if (updates.length === 0 || listeners.length === 0) return;
-
-    for (const { macAddress, power } of updates) {
-      this.lastPowerByMac.set(macAddress, power);
-      for (const listener of listeners) {
-        try {
-          await Promise.resolve(listener(macAddress, power));
-        } catch (error) {
-          console.error(`Power listener failed for mac ${macAddress}:`, error);
-        }
+  private enqueuePowerUpdates(
+    updates: PowerUpdate[],
+    stream?: PowerListenerStream,
+  ): void {
+    const targets = stream ? [stream] : [...this.listenerStreams.values()];
+    for (const update of updates) {
+      this.lastPowerByMac.set(update.macAddress, update.power);
+      for (const target of targets) {
+        target.updates$.next(update);
       }
     }
   }
