@@ -34,7 +34,7 @@ import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 @Trace()
 export class MachineService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MachineService.name);
-  private unsubscribePowerListener?: () => void;
+  private unsubscribePowerListener?: () => Promise<void>;
 
   constructor(
     private readonly machineRepository: MachineRepository,
@@ -69,8 +69,8 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       );
   }
 
-  onModuleDestroy() {
-    this.unsubscribePowerListener?.();
+  async onModuleDestroy() {
+    await this.unsubscribePowerListener?.();
   }
 
   private async handlePowerUpdate(

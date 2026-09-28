@@ -5,7 +5,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { concatMap, groupBy, mergeMap, Subject, Subscription } from 'rxjs';
+import { groupBy, mergeMap, Observable, Subject, Subscription } from 'rxjs';
 import {
   MATTER_CLIENT_OPTIONS,
   MatterClientModuleOptions,
@@ -14,6 +14,7 @@ import {
 /** ElectricalPowerMeasurement cluster / ActivePower attribute. Path: `{endpoint}/144/8` */
 const ELECTRICAL_POWER_CLUSTER_ID = '144';
 const ACTIVE_POWER_ATTRIBUTE_ID = '8';
+const POWER_UPDATE_QUEUE_LIMIT = 16;
 
 type PowerListener = (
   macAddress: string,
@@ -28,7 +29,74 @@ type PowerUpdate = {
 type PowerListenerStream = {
   updates$: Subject<PowerUpdate>;
   subscription: Subscription;
+  drained: Promise<void>;
 };
+
+function boundedConcatMap<T>(
+  project: (value: T) => Promise<void>,
+  maxQueued: number,
+  onOverflow: (value: T) => void,
+): (source: Observable<T>) => Observable<void> {
+  return (source) =>
+    new Observable<void>((subscriber) => {
+      const queue: T[] = [];
+      let inFlight = false;
+      let sourceCompleted = false;
+      let stopped = false;
+
+      const finishIfIdle = () => {
+        if (stopped) return;
+        if (sourceCompleted && !inFlight && queue.length === 0) {
+          stopped = true;
+          subscriber.complete();
+        }
+      };
+
+      const pump = async () => {
+        if (inFlight) return;
+        inFlight = true;
+        while (queue.length > 0 && !stopped) {
+          const value = queue.shift()!;
+          try {
+            await project(value);
+          } catch (error) {
+            stopped = true;
+            subscriber.error(error);
+            return;
+          }
+        }
+        inFlight = false;
+        finishIfIdle();
+      };
+
+      const subscription = source.subscribe({
+        next: (value) => {
+          if (stopped) return;
+          if (queue.length >= maxQueued) {
+            onOverflow(value);
+            return;
+          }
+          queue.push(value);
+          void pump();
+        },
+        error: (error) => {
+          if (stopped) return;
+          stopped = true;
+          subscriber.error(error);
+        },
+        complete: () => {
+          sourceCompleted = true;
+          finishIfIdle();
+        },
+      });
+
+      return () => {
+        stopped = true;
+        queue.length = 0;
+        subscription.unsubscribe();
+      };
+    });
+}
 
 @Injectable()
 export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
@@ -81,11 +149,13 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  onModuleDestroy() {
+  async onModuleDestroy() {
     this.shouldReconnect = false;
-    for (const callback of [...this.listenerStreams.keys()]) {
-      this.removePowerListener(callback);
-    }
+    await Promise.all(
+      [...this.listenerStreams.keys()].map((callback) =>
+        this.removePowerListener(callback),
+      ),
+    );
     this.lastPowerByMac.clear();
     for (const client of this.clients.values()) {
       client.disconnect();
@@ -118,7 +188,7 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
     throw new Error(`Node with mac address ${macAddress} not found`);
   }
 
-  addPowerListener(callback: PowerListener): () => void {
+  addPowerListener(callback: PowerListener): () => Promise<void> {
     const stream = this.createListenerStream(callback);
     this.listenerStreams.set(callback, stream);
     this.enqueuePowerUpdates(this.collectPowerUpdates(false), stream);
@@ -127,40 +197,54 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
 
   private createListenerStream(callback: PowerListener): PowerListenerStream {
     const updates$ = new Subject<PowerUpdate>();
+    let resolveDrained: () => void;
+    const drained = new Promise<void>((resolve) => {
+      resolveDrained = resolve;
+    });
     const subscription = updates$
       .pipe(
         groupBy((update) => update.macAddress),
         mergeMap((group$) =>
           group$.pipe(
-            concatMap(async ({ macAddress, power }) => {
-              try {
-                await Promise.resolve(callback(macAddress, power));
-              } catch (error) {
+            boundedConcatMap(
+              async ({ macAddress, power }) => {
+                try {
+                  await Promise.resolve(callback(macAddress, power));
+                } catch (error) {
+                  console.error(
+                    `Power listener failed for mac ${macAddress}:`,
+                    error,
+                  );
+                }
+              },
+              POWER_UPDATE_QUEUE_LIMIT,
+              ({ macAddress, power }) => {
                 console.error(
-                  `Power listener failed for mac ${macAddress}:`,
-                  error,
+                  `Power update queue overflow for mac ${macAddress}, dropping power ${power}`,
                 );
-              }
-            }),
+              },
+            ),
           ),
         ),
       )
       .subscribe({
         error: (error) => {
           console.error('Power listener pipeline failed:', error);
+          resolveDrained();
         },
+        complete: () => resolveDrained(),
       });
 
-    return { updates$, subscription };
+    return { updates$, subscription, drained };
   }
 
-  private removePowerListener(callback: PowerListener): void {
+  private async removePowerListener(callback: PowerListener): Promise<void> {
     const stream = this.listenerStreams.get(callback);
     if (!stream) return;
 
-    stream.updates$.complete();
-    stream.subscription.unsubscribe();
     this.listenerStreams.delete(callback);
+    stream.updates$.complete();
+    await stream.drained;
   }
 
   private emitPowerChanges(): void {
