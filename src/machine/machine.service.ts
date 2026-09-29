@@ -12,6 +12,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
 import {
@@ -31,8 +32,9 @@ import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 @Loggable()
 @Injectable()
 @Trace()
-export class MachineService implements OnModuleInit {
+export class MachineService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MachineService.name);
+  private unsubscribePowerListener?: () => Promise<void>;
 
   constructor(
     private readonly machineRepository: MachineRepository,
@@ -59,6 +61,31 @@ export class MachineService implements OnModuleInit {
           await this.machineRepository.resetMachineCommissioned(machine.uuid);
         }
       }
+    }
+
+    this.unsubscribePowerListener =
+      this.matterConnectionService.addPowerListener((macAddress, power) =>
+        this.handlePowerUpdate(macAddress, power),
+      );
+  }
+
+  async onModuleDestroy() {
+    await this.unsubscribePowerListener?.();
+  }
+
+  private async handlePowerUpdate(
+    macAddress: string,
+    power: number,
+  ): Promise<void> {
+    try {
+      await this.machineRepository.recordMachinePowerByMacAddress(
+        macAddress,
+        power / 1000,
+      );
+    } catch (error: unknown) {
+      this.logger.error(
+        `Failed to record power for mac ${macAddress}: ${formatError(error)}`,
+      );
     }
   }
 
