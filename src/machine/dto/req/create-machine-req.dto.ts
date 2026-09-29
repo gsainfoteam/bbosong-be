@@ -1,6 +1,6 @@
 import { Gender, Location, MachineType } from 'generated/prisma/client';
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsInt, Max, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { IsGreaterThan } from 'src/common/decorator/is-greater-than.decorator';
 
@@ -41,6 +41,15 @@ export class CreateMachineReqDto {
   @IsInt()
   @Min(1)
   index: number;
+
+  @ApiPropertyOptional({
+    description: 'Machine Matter Payload',
+    example: 'MT:1234567890',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  matterPayload?: string;
 }
 
 export class CreateMultipleMachinesReqDto {

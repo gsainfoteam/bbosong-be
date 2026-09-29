@@ -72,6 +72,7 @@ export class MachineService {
       updateMachineReqDto.isAvailable,
       updateMachineReqDto.posX,
       updateMachineReqDto.posY,
+      updateMachineReqDto.matterPayload,
     );
   }
 

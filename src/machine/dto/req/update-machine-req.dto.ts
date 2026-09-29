@@ -1,9 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsOptional } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
 
 export class UpdateMachineReqDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Whether the machine is physically operable',
     example: true,
     required: false,
@@ -12,7 +12,7 @@ export class UpdateMachineReqDto {
   @IsBoolean()
   isAvailable?: boolean;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'X-axis position of the machine on the floor map',
     example: 10,
     required: false,
@@ -22,7 +22,7 @@ export class UpdateMachineReqDto {
   @IsInt()
   posX?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Y-axis position of the machine on the floor map',
     example: 20,
     required: false,
@@ -31,4 +31,13 @@ export class UpdateMachineReqDto {
   @Type(() => Number)
   @IsInt()
   posY?: number;
+
+  @ApiPropertyOptional({
+    description: 'Machine Matter Payload',
+    example: 'MT:1234567890',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  matterPayload?: string;
 }

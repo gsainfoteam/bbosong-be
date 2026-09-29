@@ -1,5 +1,6 @@
 import { Loggable } from '@lib/logger';
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   InternalServerErrorException,
@@ -66,6 +67,7 @@ export class MachineRepository {
       .create({
         data: {
           ...data,
+          isCommissioned: data.matterPayload ? false : undefined,
           currentUsage: { create: {} },
         },
       })
@@ -170,11 +172,30 @@ export class MachineRepository {
     isAvailable?: boolean,
     posX?: number,
     posY?: number,
+    matterPayload?: string,
   ) {
+    const machine = await this.databaseService.machine.findUnique({
+      where: { uuid },
+    });
+    if (!machine) {
+      throw new NotFoundException('Machine not found.');
+    }
+
+    if (machine.matterPayload && (matterPayload || matterPayload === '')) {
+      throw new BadRequestException(
+        'Cannot change matter payload after it is set.',
+      );
+    }
+
     await this.databaseService.machine
       .update({
-        where: { uuid },
-        data: { isAvailable, posX, posY },
+        where: { uuid, ...(matterPayload ? { matterPayload: null } : {}) },
+        data: {
+          isAvailable,
+          posX,
+          posY,
+          ...(matterPayload ? { matterPayload, isCommissioned: false } : {}),
+        },
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
