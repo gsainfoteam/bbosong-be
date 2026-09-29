@@ -1,5 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { GetMachineResDto } from './get-machine-res.dto';
+import { MachineWithUsage } from '@lib/database/types/machine.type';
+import { UsingMachine } from 'generated/prisma/browser';
 
 export class MachineUsageInfoDto {
   @ApiProperty({
@@ -32,6 +34,14 @@ export class MachineUsageInfoDto {
     example: 40,
   })
   durationMinutes: number;
+
+  constructor(usage: UsingMachine) {
+    this.uuid = usage.uuid;
+    this.userUuid = usage.userUuid;
+    this.notifyOnCompletion = usage.notifyOnCompletion;
+    this.startedAt = usage.startedAt;
+    this.durationMinutes = usage.durationMinutes;
+  }
 }
 
 export class GetMachineDetailResDto extends GetMachineResDto {
@@ -41,4 +51,11 @@ export class GetMachineDetailResDto extends GetMachineResDto {
     nullable: true,
   })
   currentUsage: MachineUsageInfoDto | null;
+
+  constructor(machine: MachineWithUsage) {
+    super(machine);
+    this.currentUsage = machine.currentUsage
+      ? new MachineUsageInfoDto(machine.currentUsage)
+      : null;
+  }
 }

@@ -122,6 +122,7 @@ export const makeApp = async () => {
   });
 
   app.useGlobalInterceptors(new MetricsInterceptor());
+  app.enableShutdownHooks();
 
   return app;
 };

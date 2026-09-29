@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import {
   Gender,
   Location,
+  Machine,
   MachineStatus,
   MachineType,
 } from 'generated/prisma/client';
@@ -65,4 +66,16 @@ export class GetMachineResDto {
     example: MachineStatus.IDLE,
   })
   status: MachineStatus;
+
+  constructor(machine: Machine) {
+    this.uuid = machine.uuid;
+    this.type = machine.type;
+    this.location = machine.location;
+    this.gender = machine.gender;
+    this.index = machine.index;
+    this.isAvailable = machine.isAvailable;
+    this.posX = machine.posX;
+    this.posY = machine.posY;
+    this.status = machine.status;
+  }
 }

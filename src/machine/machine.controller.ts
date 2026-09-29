@@ -129,7 +129,9 @@ export class MachineController {
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async getMachines(): Promise<GetMachineResDto[]> {
-    return await this.machineService.getMachines();
+    return (await this.machineService.getMachines()).map(
+      (machine) => new GetMachineResDto(machine),
+    );
   }
 
   @Get('/me')
@@ -169,7 +171,9 @@ export class MachineController {
   async getMachine(
     @Param('uuid', ParseUUIDPipe) uuid: string,
   ): Promise<GetMachineDetailResDto> {
-    return await this.machineService.getMachineDetail(uuid);
+    return new GetMachineDetailResDto(
+      await this.machineService.getMachineDetail(uuid),
+    );
   }
 
   @Patch(':uuid')
