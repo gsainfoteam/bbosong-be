@@ -209,26 +209,6 @@ export class MachineRepository {
       });
   }
 
-  async recordMachinePower(uuid: string, power: number): Promise<void> {
-    await this.databaseService.machinePower
-      .create({
-        data: {
-          machineUuid: uuid,
-          power,
-        },
-      })
-      .catch((error) => {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2003'
-        ) {
-          throw new NotFoundException('Machine not found.');
-        }
-        this.logger.error(`recordMachinePower error: ${error}`);
-        throw new InternalServerErrorException('Database Error');
-      });
-  }
-
   async getMachinePowerFrom(
     uuid: string,
     from?: Date,

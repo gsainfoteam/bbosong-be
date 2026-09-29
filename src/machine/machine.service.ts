@@ -18,7 +18,6 @@ import {
   CreateMachineReqDto,
   CreateMultipleMachinesReqDto,
 } from './dto/req/create-machine-req.dto';
-import { CreatePowerReqDto } from './dto/req/create-power-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 import { Trace } from '@gsainfoteam/nest-observability';
 
@@ -78,10 +77,6 @@ export class MachineService {
 
   async deleteMachine(uuid: string) {
     await this.machineRepository.deleteMachine(uuid);
-  }
-
-  async recordMachinePower(uuid: string, { power }: CreatePowerReqDto) {
-    await this.machineRepository.recordMachinePower(uuid, power);
   }
 
   async getMachinePower(uuid: string, from?: Date): Promise<MachinePower[]> {
