@@ -12,6 +12,7 @@ export class UpdateRoleReqDto {
 
   @ApiProperty({
     description: 'Role to be changed',
+    enum: Role,
     example: Role.USER,
   })
   @IsEnum(Role)

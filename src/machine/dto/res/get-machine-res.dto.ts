@@ -63,6 +63,7 @@ export class GetMachineResDto {
 
   @ApiProperty({
     description: 'Current status of the machine',
+    enum: MachineStatus,
     example: MachineStatus.IDLE,
   })
   status: MachineStatus;
