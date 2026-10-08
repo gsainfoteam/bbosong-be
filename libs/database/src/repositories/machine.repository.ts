@@ -162,6 +162,16 @@ export class MachineRepository {
       });
   }
 
+  async updateMachineShortUrl(
+    uuid: string,
+    shortUrl: string,
+  ): Promise<Machine> {
+    return await this.databaseService.machine.update({
+      where: { uuid },
+      data: { shortUrl },
+    });
+  }
+
   async getMachineWithUsage(uuid: string): Promise<MachineWithUsage | null> {
     return await this.databaseService.machine
       .findUnique({

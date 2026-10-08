@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationModule } from '../notification/notification.module';
 import { MachineController } from './machine.controller';
 import { MachineService } from './machine.service';
+import { ShlinkService } from './shlink.service';
 
 @Module({
   imports: [
@@ -27,7 +28,7 @@ import { MachineService } from './machine.service';
     }),
   ],
   controllers: [MachineController],
-  providers: [MachineService],
+  providers: [MachineService, ShlinkService],
   exports: [MachineService],
 })
 export class MachineModule {}

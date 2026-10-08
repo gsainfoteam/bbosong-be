@@ -31,6 +31,7 @@ import {
   CreateMultipleMachinesReqDto,
 } from './dto/req/create-machine-req.dto';
 import {
+  BackfillMachineLinksResDto,
   CreateMachineResDto,
   CreateMultipleMachinesResDto,
 } from './dto/res/create-machine-res.dto';
@@ -46,6 +47,35 @@ import { SuccessResDto } from '../common/dto/res/success-res.dto';
 @Controller('machine')
 export class MachineController {
   constructor(private readonly machineService: MachineService) {}
+
+  @Post('/links/backfill')
+  @ApiOperation({
+    summary: 'Create links for machines that do not have one',
+    description:
+      'Retry Shlink link creation for machines without a saved link (Admin only).',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(AdminGuard)
+  @ApiOkResponse({ type: BackfillMachineLinksResDto })
+  async backfillMachineLinks(): Promise<BackfillMachineLinksResDto> {
+    return await this.machineService.backfillMachineLinks();
+  }
+
+  @Post('/:uuid/link')
+  @ApiOperation({
+    summary: 'Create or retrieve a machine link',
+    description:
+      'Create the machine registration link or return its existing value (Admin only).',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(AdminGuard)
+  @ApiOkResponse({ type: CreateMachineResDto })
+  async ensureMachineLink(
+    @Param('uuid', ParseUUIDPipe) uuid: string,
+  ): Promise<CreateMachineResDto> {
+    const machine = await this.machineService.ensureMachineLinkByUuid(uuid);
+    return { uuid: machine.uuid, shortUrl: machine.shortUrl! };
+  }
 
   @Get('summary')
   @ApiOperation({
@@ -89,6 +119,7 @@ export class MachineController {
 
     return {
       uuid: machine.uuid,
+      shortUrl: machine.shortUrl,
     };
   }
 
@@ -112,7 +143,10 @@ export class MachineController {
     @Query() query: CreateMultipleMachinesReqDto,
   ): Promise<CreateMultipleMachinesResDto> {
     const machines = await this.machineService.createMultipleMachines(query);
-    return { uuids: machines.map((item) => item.uuid) };
+    return {
+      uuids: machines.map((item) => item.uuid),
+      shortUrls: machines.map((item) => item.shortUrl),
+    };
   }
 
   @Get()

@@ -132,6 +132,7 @@ model Machine {
   matterPayload  String?       @map("matter_payload")
   macAddress     String?       @unique @map("mac_address")
   isCommissioned Boolean?      @map("is_commissioned")
+  shortUrl       String?       @map("short_url")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

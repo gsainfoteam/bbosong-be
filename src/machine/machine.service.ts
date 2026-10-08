@@ -15,6 +15,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   Gender,
   Machine,
@@ -30,6 +31,7 @@ import {
   CreateMultipleMachinesReqDto,
 } from './dto/req/create-machine-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
+import { ShlinkService } from './shlink.service';
 
 const MACHINE_ON_POWER_THRESHOLD_WATTS = 6;
 const MACHINE_ON_DURATION_MS = 60_000;
@@ -51,6 +53,8 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     private readonly usingMachineRepository: UsingMachineRepository,
     private readonly notificationService: NotificationService,
     private readonly matterConnectionService: MatterConnectionService,
+    private readonly shlinkService: ShlinkService,
+    private readonly configService: ConfigService,
   ) {}
 
   async onModuleInit() {
@@ -202,19 +206,85 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   async createMachine(
     createMachineReqDto: CreateMachineReqDto,
   ): Promise<Machine> {
-    return await this.machineRepository.createMachine(createMachineReqDto);
+    const machine =
+      await this.machineRepository.createMachine(createMachineReqDto);
+    try {
+      return await this.ensureMachineLink(machine);
+    } catch (error: unknown) {
+      this.logger.error(
+        `Failed to create link for machine ${machine.uuid}: ${formatError(error)}`,
+      );
+      return machine;
+    }
   }
 
   async createMultipleMachines(
     createMultipleMachinesReqDto: CreateMultipleMachinesReqDto,
   ): Promise<Machine[]> {
-    return await this.machineRepository.createMultipleMachines(
+    const machines = await this.machineRepository.createMultipleMachines(
       createMultipleMachinesReqDto,
     );
+    const results = await Promise.allSettled(
+      machines.map((machine) => this.ensureMachineLink(machine)),
+    );
+    return results.map((result, index) => {
+      if (result.status === 'fulfilled') return result.value;
+
+      const machine = machines[index];
+      this.logger.error(
+        `Failed to create link for machine ${machine.uuid}: ${formatError(result.reason)}`,
+      );
+      return machine;
+    });
   }
 
   async getMachines(): Promise<Machine[]> {
     return await this.machineRepository.getMachines();
+  }
+
+  async ensureMachineLink(machine: Machine): Promise<Machine> {
+    if (machine.shortUrl) return machine;
+
+    const machineRegisterUrl = this.configService.get<string>(
+      'MACHINE_REGISTER_URL',
+      'https://bbosong.gistory.me/machine-register',
+    );
+    const longUrl = `${machineRegisterUrl.replace(/\/+$/, '')}/${machine.uuid}`;
+    const shortUrl = await this.shlinkService.ensureShortUrl(longUrl);
+    return await this.machineRepository.updateMachineShortUrl(
+      machine.uuid,
+      shortUrl,
+    );
+  }
+
+  async ensureMachineLinkByUuid(uuid: string): Promise<Machine> {
+    const machine = await this.machineRepository.getMachine(uuid);
+    if (!machine) throw new NotFoundException('Machine not found.');
+    return await this.ensureMachineLink(machine);
+  }
+
+  async backfillMachineLinks(): Promise<{
+    created: number;
+    failedUuids: string[];
+  }> {
+    const machines = await this.machineRepository.getMachines();
+    const failedUuids: string[] = [];
+    let created = 0;
+
+    for (const machine of machines) {
+      if (machine.shortUrl) continue;
+      try {
+        await this.ensureMachineLink(machine);
+        created += 1;
+      } catch (error: unknown) {
+        this.logger.error(
+          `Failed to backfill link for machine ${machine.uuid}: ${formatError(error)}`,
+        );
+        failedUuids.push(machine.uuid);
+      }
+    }
+
+    return { created, failedUuids };
   }
 
   async getMachineDetail(uuid: string): Promise<MachineWithUsage> {
