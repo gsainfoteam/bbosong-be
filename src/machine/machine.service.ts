@@ -14,7 +14,6 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -209,7 +208,14 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   ): Promise<Machine> {
     const machine =
       await this.machineRepository.createMachine(createMachineReqDto);
-    return await this.ensureMachineLink(machine);
+    try {
+      return await this.ensureMachineLink(machine);
+    } catch (error: unknown) {
+      this.logger.error(
+        `Failed to create link for machine ${machine.uuid}: ${formatError(error)}`,
+      );
+      return machine;
+    }
   }
 
   async createMultipleMachines(
@@ -221,17 +227,14 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     const results = await Promise.allSettled(
       machines.map((machine) => this.ensureMachineLink(machine)),
     );
-    const failedLinks = results.filter(
-      (result) => result.status === 'rejected',
-    );
-    if (failedLinks.length > 0) {
-      throw new ServiceUnavailableException(
-        `${failedLinks.length} machine link(s) could not be created. Retry with the machine link backfill endpoint.`,
+    return results.map((result, index) => {
+      if (result.status === 'fulfilled') return result.value;
+
+      const machine = machines[index];
+      this.logger.error(
+        `Failed to create link for machine ${machine.uuid}: ${formatError(result.reason)}`,
       );
-    }
-    return results.map((result) => {
-      if (result.status === 'rejected') throw result.reason;
-      return result.value;
+      return machine;
     });
   }
 

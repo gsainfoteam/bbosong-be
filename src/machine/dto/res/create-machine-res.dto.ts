@@ -8,10 +8,12 @@ export class CreateMachineResDto {
   uuid: string;
 
   @ApiProperty({
-    description: 'Shlink short URL that opens the machine registration page',
+    description:
+      'Shlink URL for machine registration; null if link creation failed and needs retry',
     example: 'https://s.example.com/123e4567-e89b-12d3-a456-426614174000',
+    nullable: true,
   })
-  shortUrl: string;
+  shortUrl: string | null;
 }
 
 export class CreateMultipleMachinesResDto {
@@ -23,10 +25,12 @@ export class CreateMultipleMachinesResDto {
   uuids: string[];
 
   @ApiProperty({
-    type: [String],
-    description: 'Shlink URLs in the same order as uuids',
+    type: 'array',
+    items: { type: 'string', nullable: true },
+    description:
+      'Shlink URLs in the same order as uuids; null entries need link retry',
   })
-  shortUrls: string[];
+  shortUrls: (string | null)[];
 }
 
 export class BackfillMachineLinksResDto {

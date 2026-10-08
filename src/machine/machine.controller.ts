@@ -119,7 +119,7 @@ export class MachineController {
 
     return {
       uuid: machine.uuid,
-      shortUrl: machine.shortUrl!,
+      shortUrl: machine.shortUrl,
     };
   }
 
@@ -145,7 +145,7 @@ export class MachineController {
     const machines = await this.machineService.createMultipleMachines(query);
     return {
       uuids: machines.map((item) => item.uuid),
-      shortUrls: machines.map((item) => item.shortUrl!),
+      shortUrls: machines.map((item) => item.shortUrl),
     };
   }
 
