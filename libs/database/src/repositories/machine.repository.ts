@@ -8,7 +8,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DatabaseService } from '@lib/database/database.service';
-import { Gender, Machine, MachinePower, Prisma } from 'generated/prisma/client';
+import {
+  Gender,
+  Machine,
+  MachinePower,
+  MachineStatus,
+  MachineType,
+  Prisma,
+} from 'generated/prisma/client';
 import {
   LaundryRoomSummary,
   MachineWithUsage,
@@ -271,6 +278,36 @@ export class MachineRepository {
           throw new NotFoundException('Machine not found.');
         }
         this.logger.error(`recordMachinePowerByMacAddress error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
+  }
+
+  async getMachineTypeByMacAddress(
+    macAddress: string,
+  ): Promise<MachineType | null> {
+    return this.databaseService.machine
+      .findUnique({
+        where: { macAddress },
+        select: { type: true },
+      })
+      .then((machine) => machine?.type ?? null)
+      .catch((error) => {
+        this.logger.error(`getMachineTypeByMacAddress error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
+  }
+
+  async updateMachineStatusByMacAddress(
+    macAddress: string,
+    status: MachineStatus,
+  ): Promise<void> {
+    await this.databaseService.machine
+      .updateMany({
+        where: { macAddress, status: { not: status } },
+        data: { status },
+      })
+      .catch((error) => {
+        this.logger.error(`updateMachineStatusByMacAddress error: ${error}`);
         throw new InternalServerErrorException('Database Error');
       });
   }

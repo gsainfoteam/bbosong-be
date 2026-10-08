@@ -19,6 +19,8 @@ import {
   Gender,
   Machine,
   MachinePower,
+  MachineStatus,
+  MachineType,
   UsingMachine,
 } from 'generated/prisma/client';
 import { formatError } from 'src/common/utils/format-error.util';
@@ -29,12 +31,20 @@ import {
 } from './dto/req/create-machine-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 
+const MACHINE_ON_POWER_THRESHOLD_WATTS = 6;
+const MACHINE_ON_DURATION_MS = 60_000;
+const MATTER_POWER_UNITS_PER_WATT = 1000;
+
 @Loggable()
 @Injectable()
 @Trace()
 export class MachineService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MachineService.name);
   private unsubscribePowerListener?: () => Promise<void>;
+  private readonly machineTypesByMacAddress = new Map<string, MachineType>();
+  private readonly powerBelowThresholdTimers = new Map<string, NodeJS.Timeout>();
+  private readonly latestPowerWattsByMacAddress = new Map<string, number>();
+  private readonly statusUpdateQueues = new Map<string, Promise<void>>();
 
   constructor(
     private readonly machineRepository: MachineRepository,
@@ -46,6 +56,10 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     const machines = await this.machineRepository.getMachines();
     for (const machine of machines) {
+      if (machine.macAddress) {
+        this.machineTypesByMacAddress.set(machine.macAddress, machine.type);
+      }
+
       if (machine.isCommissioned) {
         if (!machine.macAddress) {
           throw new Error(
@@ -71,22 +85,112 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     await this.unsubscribePowerListener?.();
+    for (const timer of this.powerBelowThresholdTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.powerBelowThresholdTimers.clear();
+    this.latestPowerWattsByMacAddress.clear();
   }
 
   private async handlePowerUpdate(
     macAddress: string,
     power: number,
   ): Promise<void> {
+    const powerWatts = power / MATTER_POWER_UNITS_PER_WATT;
+    const isBelowThreshold = powerWatts < MACHINE_ON_POWER_THRESHOLD_WATTS;
+    this.latestPowerWattsByMacAddress.set(macAddress, powerWatts);
+    if (isBelowThreshold) {
+      this.scheduleIdleAfterLowPower(macAddress);
+    } else {
+      this.clearPowerBelowThresholdTimer(macAddress);
+    }
+
     try {
       await this.machineRepository.recordMachinePowerByMacAddress(
         macAddress,
-        power / 1000,
+        powerWatts,
+      );
+
+      if (isBelowThreshold) return;
+
+      const machineType =
+        this.machineTypesByMacAddress.get(macAddress) ??
+        (await this.machineRepository.getMachineTypeByMacAddress(macAddress));
+      if (!machineType) return;
+      this.machineTypesByMacAddress.set(macAddress, machineType);
+
+      const activeStatus =
+        machineType === MachineType.WASHER
+          ? MachineStatus.WASH
+          : MachineStatus.DRY;
+      await this.enqueueMachineStatusUpdate(
+        macAddress,
+        activeStatus,
+        () =>
+          (this.latestPowerWattsByMacAddress.get(macAddress) ?? 0) >=
+          MACHINE_ON_POWER_THRESHOLD_WATTS,
       );
     } catch (error: unknown) {
       this.logger.error(
-        `Failed to record power for mac ${macAddress}: ${formatError(error)}`,
+        `Failed to process power update for mac ${macAddress}: ${formatError(error)}`,
       );
     }
+  }
+
+  private scheduleIdleAfterLowPower(macAddress: string): void {
+    if (this.powerBelowThresholdTimers.has(macAddress)) return;
+
+    const timer = setTimeout(() => {
+      if (this.powerBelowThresholdTimers.get(macAddress) !== timer) return;
+      this.powerBelowThresholdTimers.delete(macAddress);
+      void this.enqueueMachineStatusUpdate(
+        macAddress,
+        MachineStatus.IDLE,
+        () =>
+          (this.latestPowerWattsByMacAddress.get(macAddress) ?? 0) <
+          MACHINE_ON_POWER_THRESHOLD_WATTS,
+      ).catch((error: unknown) => {
+        this.logger.error(
+          `Failed to update status for mac ${macAddress}: ${formatError(error)}`,
+        );
+      });
+    }, MACHINE_ON_DURATION_MS);
+    this.powerBelowThresholdTimers.set(macAddress, timer);
+  }
+
+  private clearPowerBelowThresholdTimer(macAddress: string): void {
+    const timer = this.powerBelowThresholdTimers.get(macAddress);
+    if (!timer) return;
+
+    clearTimeout(timer);
+    this.powerBelowThresholdTimers.delete(macAddress);
+  }
+
+  private enqueueMachineStatusUpdate(
+    macAddress: string,
+    status: MachineStatus,
+    shouldUpdate: () => boolean,
+  ): Promise<void> {
+    const previousUpdate =
+      this.statusUpdateQueues.get(macAddress) ?? Promise.resolve();
+    const update = previousUpdate
+      .catch(() => undefined)
+      .then(async () => {
+        if (!shouldUpdate()) return;
+        await this.machineRepository.updateMachineStatusByMacAddress(
+          macAddress,
+          status,
+        );
+      });
+
+    this.statusUpdateQueues.set(macAddress, update);
+    const cleanup = () => {
+      if (this.statusUpdateQueues.get(macAddress) === update) {
+        this.statusUpdateQueues.delete(macAddress);
+      }
+    };
+    void update.then(cleanup, cleanup);
+    return update;
   }
 
   async laundryRoomStatusByGender(
