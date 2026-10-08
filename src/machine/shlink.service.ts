@@ -13,11 +13,13 @@ export class ShlinkService {
   private readonly client?: ShlinkApiClient;
   private readonly domain?: string;
   private readonly shortCodeLength?: number;
+  private readonly tag?: string;
 
   constructor(configService: ConfigService) {
     const baseUrl = configService.get<string>('SHLINK_URL');
     const apiKey = configService.get<string>('SHLINK_API_KEY');
     this.domain = configService.get<string>('SHLINK_DOMAIN');
+    this.tag = configService.get<string>('SHLINK_TAG');
     const shortCodeLength = configService.get<string>(
       'SHLINK_SHORT_CODE_LENGTH',
     );
@@ -47,6 +49,7 @@ export class ShlinkService {
         ...(this.domain ? { domain: this.domain } : {}),
         findIfExists: true,
         signal: AbortSignal.timeout(5000),
+        tags: this.tag ? [this.tag] : undefined,
       });
       return created.shortUrl;
     } catch (error: unknown) {
