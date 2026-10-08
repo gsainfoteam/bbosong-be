@@ -68,6 +68,13 @@ export class GetMachineResDto {
   })
   status: MachineStatus;
 
+  @ApiProperty({
+    description: 'Shlink URL for the machine registration page',
+    example: 'https://s.example.com/123e4567-e89b-12d3-a456-426614174000',
+    nullable: true,
+  })
+  shortUrl: string | null;
+
   constructor(machine: Machine) {
     this.uuid = machine.uuid;
     this.type = machine.type;
@@ -78,5 +85,6 @@ export class GetMachineResDto {
     this.posX = machine.posX;
     this.posY = machine.posY;
     this.status = machine.status;
+    this.shortUrl = machine.shortUrl;
   }
 }
