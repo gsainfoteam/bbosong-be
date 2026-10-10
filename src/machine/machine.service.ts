@@ -44,6 +44,11 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MachineService.name);
   private unsubscribePowerListener?: () => Promise<void>;
   private readonly machineTypesByMacAddress = new Map<string, MachineType>();
+  private readonly machineUuidsByMacAddress = new Map<string, string>();
+  private readonly machineStatusesByMacAddress = new Map<
+    string,
+    MachineStatus
+  >();
   private readonly powerBelowThresholdTimers = new Map<string, NodeJS.Timeout>();
   private readonly latestPowerWattsByMacAddress = new Map<string, number>();
   private readonly statusUpdateQueues = new Map<string, Promise<void>>();
@@ -62,6 +67,11 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     for (const machine of machines) {
       if (machine.macAddress) {
         this.machineTypesByMacAddress.set(machine.macAddress, machine.type);
+        this.machineUuidsByMacAddress.set(machine.macAddress, machine.uuid);
+        this.machineStatusesByMacAddress.set(
+          machine.macAddress,
+          machine.status,
+        );
       }
 
       if (machine.isCommissioned) {
@@ -181,10 +191,36 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       .catch(() => undefined)
       .then(async () => {
         if (!shouldUpdate()) return;
+
+        const previousStatus =
+          this.machineStatusesByMacAddress.get(macAddress);
+        if (previousStatus === status) return;
+
         await this.machineRepository.updateMachineStatusByMacAddress(
           macAddress,
           status,
         );
+
+        const machineUuid = this.machineUuidsByMacAddress.get(macAddress);
+        if (!machineUuid || previousStatus === undefined) {
+          this.machineStatusesByMacAddress.set(macAddress, status);
+          return;
+        }
+
+        try {
+          if (status === MachineStatus.IDLE) {
+            await this.finishUsingMachine(machineUuid);
+          } else if (previousStatus === MachineStatus.IDLE) {
+            await this.startUsingMachine(machineUuid, 0);
+          }
+        } catch (error: unknown) {
+          this.logger.error(
+            `Failed to update usage for machine ${machineUuid}: ${formatError(error)}`,
+          );
+          return;
+        }
+
+        this.machineStatusesByMacAddress.set(macAddress, status);
       });
 
     this.statusUpdateQueues.set(macAddress, update);
@@ -447,5 +483,8 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       machineUuid,
       macAddress,
     );
+    this.machineTypesByMacAddress.set(macAddress, machine.type);
+    this.machineUuidsByMacAddress.set(macAddress, machine.uuid);
+    this.machineStatusesByMacAddress.set(macAddress, machine.status);
   }
 }
