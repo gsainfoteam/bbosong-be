@@ -200,10 +200,12 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
           macAddress,
           status,
         );
-        this.machineStatusesByMacAddress.set(macAddress, status);
 
         const machineUuid = this.machineUuidsByMacAddress.get(macAddress);
-        if (!machineUuid || previousStatus === undefined) return;
+        if (!machineUuid || previousStatus === undefined) {
+          this.machineStatusesByMacAddress.set(macAddress, status);
+          return;
+        }
 
         try {
           if (status === MachineStatus.IDLE) {
@@ -215,7 +217,10 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
           this.logger.error(
             `Failed to update usage for machine ${machineUuid}: ${formatError(error)}`,
           );
+          return;
         }
+
+        this.machineStatusesByMacAddress.set(macAddress, status);
       });
 
     this.statusUpdateQueues.set(macAddress, update);
