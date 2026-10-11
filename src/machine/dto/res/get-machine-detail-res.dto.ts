@@ -29,18 +29,11 @@ export class MachineUsageInfoDto {
   })
   startedAt: Date;
 
-  @ApiProperty({
-    description: 'Expected duration of the usage in minutes',
-    example: 40,
-  })
-  durationMinutes: number;
-
   constructor(usage: UsingMachine) {
     this.uuid = usage.uuid;
     this.userUuid = usage.userUuid;
     this.notifyOnCompletion = usage.notifyOnCompletion;
     this.startedAt = usage.startedAt;
-    this.durationMinutes = usage.durationMinutes;
   }
 }
 

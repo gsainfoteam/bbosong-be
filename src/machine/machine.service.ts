@@ -213,7 +213,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
           if (status === MachineStatus.IDLE) {
             await this.finishUsingMachine(machineUuid);
           } else if (previousStatus === MachineStatus.IDLE) {
-            await this.startUsingMachine(machineUuid, 0);
+            await this.startUsingMachine(machineUuid);
           }
         } catch (error: unknown) {
           this.logger.error(
@@ -420,13 +420,11 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
 
   async startUsingMachine(
     machineUuid: string,
-    durationMinutes: number,
     userUuid?: string,
     notifyOnCompletion = true,
   ): Promise<UsingMachine> {
     return await this.usingMachineRepository.createUsingMachine(
       machineUuid,
-      durationMinutes,
       userUuid,
       notifyOnCompletion,
     );
