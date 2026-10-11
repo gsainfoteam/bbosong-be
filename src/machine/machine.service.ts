@@ -34,7 +34,7 @@ import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 import { ShlinkService } from './shlink.service';
 
 const MACHINE_ON_POWER_THRESHOLD_WATTS = 6;
-const MACHINE_ON_DURATION_MS = 60_000;
+const MACHINE_ON_DURATION_MS = 120_000;
 const MATTER_POWER_UNITS_PER_WATT = 1000;
 
 @Loggable()
