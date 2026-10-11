@@ -1,5 +1,6 @@
 import { FetchHttpClient } from '@shlinkio/shlink-js-sdk/fetch';
 import { ShlinkApiClient } from '@shlinkio/shlink-js-sdk';
+import type { ShlinkApiClient as ShlinkApiClientContract } from '@shlinkio/shlink-js-sdk/api-contract';
 import {
   Injectable,
   Logger,
@@ -10,7 +11,7 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class ShlinkService {
   private readonly logger = new Logger(ShlinkService.name);
-  private readonly client?: ShlinkApiClient;
+  private readonly client?: ShlinkApiClientContract;
   private readonly domain?: string;
   private readonly shortCodeLength?: number;
   private readonly tag?: string;
