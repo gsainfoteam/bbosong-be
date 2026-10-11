@@ -75,6 +75,13 @@ export class GetMachineResDto {
   })
   shortUrl: string | null;
 
+  @ApiProperty({
+    description: 'Unique short code of the machine QR link',
+    nullable: true,
+    example: 'abc123',
+  })
+  shortCode: string | null;
+
   constructor(machine: Machine) {
     this.uuid = machine.uuid;
     this.type = machine.type;
@@ -86,5 +93,6 @@ export class GetMachineResDto {
     this.posY = machine.posY;
     this.status = machine.status;
     this.shortUrl = machine.shortUrl;
+    this.shortCode = machine.shortCode;
   }
 }

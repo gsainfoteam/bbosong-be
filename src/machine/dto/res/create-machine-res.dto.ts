@@ -14,6 +14,13 @@ export class CreateMachineResDto {
     nullable: true,
   })
   shortUrl: string | null;
+
+  @ApiProperty({
+    description: 'Unique short code; null if link creation needs retry',
+    nullable: true,
+    example: 'abc123',
+  })
+  shortCode: string | null;
 }
 
 export class CreateMultipleMachinesResDto {
@@ -31,6 +38,13 @@ export class CreateMultipleMachinesResDto {
       'Shlink URLs in the same order as uuids; null entries need link retry',
   })
   shortUrls: (string | null)[];
+
+  @ApiProperty({
+    type: 'array',
+    items: { type: 'string', nullable: true },
+    description: 'Short codes in the same order as uuids',
+  })
+  shortCodes: (string | null)[];
 }
 
 export class BackfillMachineLinksResDto {
