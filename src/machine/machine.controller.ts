@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
@@ -24,6 +25,7 @@ import { AdminGuard } from '../auth/guard/admin.guard';
 import { GetUser } from '../auth/decorator/get-user.decorator';
 import { User } from 'generated/prisma/client';
 import { MachineService } from './machine.service';
+import { GetMachineByShortlinkReqDto } from './dto/req/get-machine-by-shortlink-req.dto';
 import { GetLaundryRoomStatusReqDto } from './dto/req/get-laundry-room-status-req.dto';
 import { GetLaundryRoomStatusResDto } from './dto/res/get-laundry-room-status-res.dto';
 import {
@@ -74,7 +76,11 @@ export class MachineController {
     @Param('uuid', ParseUUIDPipe) uuid: string,
   ): Promise<CreateMachineResDto> {
     const machine = await this.machineService.ensureMachineLinkByUuid(uuid);
-    return { uuid: machine.uuid, shortUrl: machine.shortUrl! };
+    return {
+      uuid: machine.uuid,
+      shortUrl: machine.shortUrl!,
+      shortCode: machine.shortCode,
+    };
   }
 
   @Get('summary')
@@ -120,6 +126,7 @@ export class MachineController {
     return {
       uuid: machine.uuid,
       shortUrl: machine.shortUrl,
+      shortCode: machine.shortCode,
     };
   }
 
@@ -146,6 +153,7 @@ export class MachineController {
     return {
       uuids: machines.map((item) => item.uuid),
       shortUrls: machines.map((item) => item.shortUrl),
+      shortCodes: machines.map((item) => item.shortCode),
     };
   }
 
@@ -186,6 +194,26 @@ export class MachineController {
     @GetUser() user: User,
   ): Promise<GetUsingMachineResDto[]> {
     return await this.machineService.getUsingMachinesByUser(user.uuid);
+  }
+
+  @Get('by-shortlink')
+  @ApiOperation({
+    summary: 'Get machine detail by shortlink',
+    description:
+      'Retrieve machine detail and current usage using the short code from the QR URL scanned in the app, without following a redirect.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiOkResponse({ type: GetMachineDetailResDto })
+  @ApiBadRequestResponse({ description: 'Invalid short code.' })
+  @ApiNotFoundResponse({ description: 'Machine not found.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async getMachineByShortlink(
+    @Query() query: GetMachineByShortlinkReqDto,
+  ): Promise<GetMachineDetailResDto> {
+    return new GetMachineDetailResDto(
+      await this.machineService.getMachineDetailByShortCode(query.shortCode),
+    );
   }
 
   @Get(':uuid')

@@ -165,11 +165,26 @@ export class MachineRepository {
   async updateMachineShortUrl(
     uuid: string,
     shortUrl: string,
+    shortCode: string,
   ): Promise<Machine> {
     return await this.databaseService.machine.update({
       where: { uuid },
-      data: { shortUrl },
+      data: { shortUrl, shortCode },
     });
+  }
+
+  async getMachineWithUsageByShortCode(
+    shortCode: string,
+  ): Promise<MachineWithUsage | null> {
+    return await this.databaseService.machine
+      .findUnique({
+        where: { shortCode },
+        include: { currentUsage: true },
+      })
+      .catch((error) => {
+        this.logger.error(`getMachineWithUsageByShortCode error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
   }
 
   async getMachineWithUsage(uuid: string): Promise<MachineWithUsage | null> {

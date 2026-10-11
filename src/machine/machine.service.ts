@@ -49,7 +49,10 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     string,
     MachineStatus
   >();
-  private readonly powerBelowThresholdTimers = new Map<string, NodeJS.Timeout>();
+  private readonly powerBelowThresholdTimers = new Map<
+    string,
+    NodeJS.Timeout
+  >();
   private readonly latestPowerWattsByMacAddress = new Map<string, number>();
   private readonly statusUpdateQueues = new Map<string, Promise<void>>();
 
@@ -192,8 +195,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       .then(async () => {
         if (!shouldUpdate()) return;
 
-        const previousStatus =
-          this.machineStatusesByMacAddress.get(macAddress);
+        const previousStatus = this.machineStatusesByMacAddress.get(macAddress);
         if (previousStatus === status) return;
 
         await this.machineRepository.updateMachineStatusByMacAddress(
@@ -279,7 +281,17 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   }
 
   async ensureMachineLink(machine: Machine): Promise<Machine> {
-    if (machine.shortUrl) return machine;
+    if (machine.shortUrl && machine.shortCode) return machine;
+    if (machine.shortUrl) {
+      return await this.machineRepository.updateMachineShortUrl(
+        machine.uuid,
+        machine.shortUrl,
+        new URL(machine.shortUrl).pathname
+          .replace(/\/+$/, '')
+          .split('/')
+          .pop()!,
+      );
+    }
 
     const machineRegisterUrl = this.configService.get<string>(
       'MACHINE_REGISTER_URL',
@@ -290,6 +302,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     return await this.machineRepository.updateMachineShortUrl(
       machine.uuid,
       shortUrl,
+      new URL(shortUrl).pathname.replace(/\/+$/, '').split('/').pop()!,
     );
   }
 
@@ -308,7 +321,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     let created = 0;
 
     for (const machine of machines) {
-      if (machine.shortUrl) continue;
+      if (machine.shortUrl && machine.shortCode) continue;
       try {
         await this.ensureMachineLink(machine);
         created += 1;
@@ -321,6 +334,15 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     }
 
     return { created, failedUuids };
+  }
+
+  async getMachineDetailByShortCode(
+    shortCode: string,
+  ): Promise<MachineWithUsage> {
+    const machine =
+      await this.machineRepository.getMachineWithUsageByShortCode(shortCode);
+    if (!machine) throw new NotFoundException('Machine not found.');
+    return machine;
   }
 
   async getMachineDetail(uuid: string): Promise<MachineWithUsage> {
