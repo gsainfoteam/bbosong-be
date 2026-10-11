@@ -18,7 +18,6 @@ export class UsingMachineRepository {
   // Create or start using a machine
   async createUsingMachine(
     machineUuid: string,
-    durationMinutes: number,
     userUuid?: string,
     notifyOnCompletion = true,
   ): Promise<UsingMachine> {
@@ -28,12 +27,10 @@ export class UsingMachineRepository {
         create: {
           machineUuid,
           userUuid: userUuid ?? null,
-          durationMinutes,
           notifyOnCompletion,
         },
         update: {
           userUuid: userUuid ?? null,
-          durationMinutes,
           notifyOnCompletion,
           startedAt: new Date(),
         },

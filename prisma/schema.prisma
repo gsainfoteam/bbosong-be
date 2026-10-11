@@ -152,7 +152,6 @@ model UsingMachine {
   userUuid           String?  @map("user_uuid") @db.Uuid
   notifyOnCompletion Boolean  @default(true) @map("notify_on_completion")
   startedAt          DateTime @default(now()) @map("started_at")
-  durationMinutes    Int      @default(0) @map("duration_minutes")
 
   machine Machine @relation(fields: [machineUuid], references: [uuid], onDelete: Cascade)
 

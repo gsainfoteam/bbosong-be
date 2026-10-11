@@ -31,10 +31,4 @@ export class GetUsingMachineResDto {
     example: '2026-08-01T14:23:11.000Z',
   })
   startedAt: Date;
-
-  @ApiProperty({
-    description: 'Expected duration of the usage in minutes',
-    example: 40,
-  })
-  durationMinutes: number;
 }
