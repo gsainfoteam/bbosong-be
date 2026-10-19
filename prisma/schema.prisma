@@ -138,8 +138,8 @@ model Machine {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  currentUsage UsingMachine?
-  power        MachinePower[]
+  usages UsingMachine[]
+  power  MachinePower[]
 
   @@unique([location, gender, type, index])
   @@index([location, gender])
@@ -147,17 +147,20 @@ model Machine {
 }
 
 model UsingMachine {
-  uuid               String   @id @default(uuid()) @db.Uuid
-  machineUuid        String   @unique @map("machine_uuid") @db.Uuid
-  userUuid           String?  @map("user_uuid") @db.Uuid
-  notifyOnCompletion Boolean  @default(true) @map("notify_on_completion")
-  startedAt          DateTime @default(now()) @map("started_at")
+  uuid               String    @id @default(uuid()) @db.Uuid
+  machineUuid        String    @map("machine_uuid") @db.Uuid
+  userUuid           String?   @map("user_uuid") @db.Uuid
+  notifyOnCompletion Boolean   @default(true) @map("notify_on_completion")
+  startedAt          DateTime  @default(now()) @map("started_at")
+  endedAt            DateTime? @map("ended_at")
 
-  machine Machine @relation(fields: [machineUuid], references: [uuid], onDelete: Cascade)
+  machine Machine @relation(fields: [machineUuid], references: [uuid], onDelete: Restrict)
 
   user User? @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
 
-  @@index([userUuid])
+  // The migration additionally enforces one open session per machine with a partial unique index.
+  @@index([machineUuid, startedAt])
+  @@index([userUuid, endedAt, startedAt])
   @@map("using_machine")
 }
 

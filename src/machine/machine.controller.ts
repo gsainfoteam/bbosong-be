@@ -43,6 +43,7 @@ import { GetMachineResDto } from './dto/res/get-machine-res.dto';
 import { GetMachineDetailResDto } from './dto/res/get-machine-detail-res.dto';
 import { GetMachinePowerReqDto } from './dto/req/get-machine-power-req.dto';
 import { GetMachinePowerResDto } from './dto/res/get-machine-power-res.dto';
+import { GetMachineUsageHistoryReqDto } from './dto/req/get-machine-usage-history-req.dto';
 import { GetUsingMachineResDto } from './dto/res/get-using-machine-res.dto';
 import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto';
 import { SuccessResDto } from '../common/dto/res/success-res.dto';
@@ -179,9 +180,9 @@ export class MachineController {
 
   @Get('/me')
   @ApiOperation({
-    summary: 'Get machines used by current user',
+    summary: 'Get machines currently used by current user',
     description:
-      "Retrieve all machine usage sessions linked to the authenticated user's account.",
+      "Retrieve active machine usage sessions linked to the authenticated user's account.",
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
@@ -195,6 +196,28 @@ export class MachineController {
     @GetUser() user: User,
   ): Promise<GetUsingMachineResDto[]> {
     return await this.machineService.getUsingMachinesByUser(user.uuid);
+  }
+
+  @Get('/me/history')
+  @ApiOperation({
+    summary: 'Get current user machine usage history',
+    description:
+      'Retrieve completed usage sessions for the authenticated user, newest first. Supports limit and offset pagination.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiOkResponse({ type: GetUsingMachineResDto, isArray: true })
+  @ApiBadRequestResponse({ description: 'Invalid pagination parameters.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async getUsageHistoryByUser(
+    @GetUser() user: User,
+    @Query() query: GetMachineUsageHistoryReqDto,
+  ): Promise<GetUsingMachineResDto[]> {
+    return this.machineService.getUsageHistoryByUser(
+      user.uuid,
+      query.limit,
+      query.offset,
+    );
   }
 
   @Get('by-shortlink')
@@ -276,6 +299,7 @@ export class MachineController {
   @UseGuards(AdminGuard)
   @ApiOkResponse({ description: 'Machine deleted successfully.' })
   @ApiNotFoundResponse({ description: 'Machine not found.' })
+  @ApiConflictResponse({ description: 'Machine has usage history.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async deleteMachine(@Param('uuid', ParseUUIDPipe) uuid: string) {
     await this.machineService.deleteMachine(uuid);

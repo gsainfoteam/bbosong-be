@@ -439,6 +439,18 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     return await this.usingMachineRepository.getUsingMachinesByUser(userUuid);
   }
 
+  async getUsageHistoryByUser(
+    userUuid: string,
+    limit: number,
+    offset: number,
+  ): Promise<UsingMachine[]> {
+    return this.usingMachineRepository.getUsageHistoryByUser(
+      userUuid,
+      limit,
+      offset,
+    );
+  }
+
   async unlinkUserFromMachine(
     userUuid: string,
     machineUuid: string,
@@ -472,13 +484,10 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
 
   async finishUsingMachine(machineUuid: string): Promise<void> {
     const usingMachine =
-      await this.usingMachineRepository.getUsingMachineByMachineUuid(
-        machineUuid,
-      );
+      await this.usingMachineRepository.finishUsingMachine(machineUuid);
+    if (!usingMachine) return;
+
     const machine = await this.machineRepository.getMachine(machineUuid);
-
-    await this.usingMachineRepository.deleteUsingMachine(machineUuid);
-
     if (!machine) return;
 
     const notifyUserUuid = usingMachine?.notifyOnCompletion
