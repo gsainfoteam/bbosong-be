@@ -36,6 +36,7 @@ import { UpdateRoleReqDto } from './dto/req/update-role-req.dto';
 import { AdminGuard } from './guard/admin.guard';
 import { ConsentRequiredErrorDto } from './dto/res/consent-required-error.dto';
 import { GenderRequiredErrorDto } from './dto/res/gender-required-error.dto';
+import { AuthenticatedUser } from './types/authenticated-user.type';
 
 @Controller('auth')
 export class AuthController {
@@ -45,7 +46,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'User login',
     description:
-      'Authenticate user via Infoteam OAuth token and issue JWT access and refresh tokens.',
+      'Authenticate user via Infoteam OAuth token and issue JWT access and refresh tokens for a new session. Existing sessions remain active.',
   })
   @ApiSecurity('oauth2')
   @ApiCreatedResponse({ type: JwtToken, description: 'Login success' })
@@ -118,10 +119,10 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async logout(
-    @GetUser() user: User,
+    @GetUser() user: AuthenticatedUser,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
-    await this.authService.userLogout(user.uuid);
+    await this.authService.userLogout(user.uuid, user.sessionId);
     this.clearRefreshTokenCookie(res);
   }
 

@@ -82,6 +82,29 @@ export class UserRefreshTokenRepository {
       });
   }
 
+  async deleteUserRefreshTokenBySessionId(
+    userUuid: string,
+    sessionId: string,
+  ): Promise<void> {
+    await this.databaseService.userRefreshToken
+      .deleteMany({
+        where: {
+          userUuid,
+          sessionId,
+        },
+      })
+      .catch((error) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          this.logger.error(
+            `deleteUserRefreshTokenBySessionId prisma error: ${error.message}`,
+          );
+          throw new InternalServerErrorException('Database Error');
+        }
+        this.logger.error(`deleteUserRefreshTokenBySessionId error: ${error}`);
+        throw new InternalServerErrorException('Unknown Error');
+      });
+  }
+
   async deleteAllUserRefreshTokensInTx(
     userUuid: string,
     tx: PrismaTransaction,
