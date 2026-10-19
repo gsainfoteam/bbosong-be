@@ -43,7 +43,7 @@ jest.mock('src/common/utils/format-error.util', () => ({}), { virtual: true });
 jest.mock('../notification/notification.service', () => ({}));
 jest.mock('./shlink.service', () => ({}));
 
-describe('MachineService gender restrictions', () => {
+describe('MachineService access and registration', () => {
   const machineUuid = '00000000-0000-4000-8000-000000000001';
   const userUuid = '00000000-0000-4000-8000-000000000002';
   const machine = {
@@ -60,6 +60,7 @@ describe('MachineService gender restrictions', () => {
   };
   const usingMachineRepository = {
     enableMachineNotification: jest.fn(),
+    getUsingMachineByMachineUuid: jest.fn(),
   };
   let service: MachineService;
 
@@ -76,6 +77,7 @@ describe('MachineService gender restrictions', () => {
     machineRepository.getMachineWithUsage.mockResolvedValue(machine);
     machineRepository.getMachineWithUsageByShortCode.mockResolvedValue(machine);
     usingMachineRepository.enableMachineNotification.mockResolvedValue(1);
+    usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue(null);
   });
 
   describe.each([
@@ -152,12 +154,68 @@ describe('MachineService gender restrictions', () => {
     expect(
       usingMachineRepository.enableMachineNotification,
     ).toHaveBeenCalledWith(userUuid, machineUuid);
+    expect(
+      usingMachineRepository.getUsingMachineByMachineUuid,
+    ).not.toHaveBeenCalled();
   });
 
-  it('preserves existing registration conflict checks', async () => {
+  it('returns a distinct error when the machine is not running', async () => {
     usingMachineRepository.enableMachineNotification.mockResolvedValue(0);
     await expect(
       service.enableMachineNotification(userUuid, machineUuid, Gender.MALE),
-    ).rejects.toThrow(NotFoundException);
+    ).rejects.toMatchObject({
+      status: 404,
+      response: {
+        statusCode: 404,
+        message: 'Machine is not running.',
+        errorCode: 'MACHINE_NOT_RUNNING',
+      },
+    });
+    expect(
+      usingMachineRepository.getUsingMachineByMachineUuid,
+    ).toHaveBeenCalledWith(machineUuid);
+  });
+
+  it('returns a conflict when another user has claimed the machine', async () => {
+    // The claim may happen after the initial detail lookup.
+    usingMachineRepository.enableMachineNotification.mockResolvedValue(0);
+    usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue({
+      machineUuid,
+      userUuid: '00000000-0000-4000-8000-000000000003',
+    });
+
+    await expect(
+      service.enableMachineNotification(userUuid, machineUuid, Gender.MALE),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        statusCode: 409,
+        message: 'Machine is already registered to another user.',
+        errorCode: 'MACHINE_ALREADY_REGISTERED',
+      },
+    });
+  });
+
+  it('preserves missing-machine errors before attempting registration', async () => {
+    machineRepository.getMachineWithUsage.mockResolvedValue(null);
+
+    await expect(
+      service.enableMachineNotification(userUuid, machineUuid, Gender.MALE),
+    ).rejects.toThrow('Machine not found.');
+    expect(
+      usingMachineRepository.enableMachineNotification,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('does not classify database failures as registration errors', async () => {
+    const error = new Error('Database unavailable');
+    usingMachineRepository.enableMachineNotification.mockRejectedValue(error);
+
+    await expect(
+      service.enableMachineNotification(userUuid, machineUuid, Gender.MALE),
+    ).rejects.toBe(error);
+    expect(
+      usingMachineRepository.getUsingMachineByMachineUuid,
+    ).not.toHaveBeenCalled();
   });
 });

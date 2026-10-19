@@ -319,7 +319,12 @@ export class MachineController {
     description: 'Machine gender does not match user gender.',
   })
   @ApiNotFoundResponse({
-    description: 'Machine is not running or operating user mismatch.',
+    description:
+      'Machine not found, or machine is not running (MACHINE_NOT_RUNNING).',
+  })
+  @ApiConflictResponse({
+    description:
+      'Machine is already registered to another user (MACHINE_ALREADY_REGISTERED).',
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async registerMachineUsage(
@@ -350,7 +355,12 @@ export class MachineController {
     description: 'Machine gender does not match user gender.',
   })
   @ApiNotFoundResponse({
-    description: 'Machine is not running or operating user mismatch.',
+    description:
+      'Machine not found or not running (MACHINE_NOT_RUNNING when enabling notification); operating user mismatch when disabling notification.',
+  })
+  @ApiConflictResponse({
+    description:
+      'When enabling notification: machine is already registered to another user (MACHINE_ALREADY_REGISTERED).',
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async toggleMachineNotification(

@@ -9,7 +9,9 @@ import { Loggable } from '@lib/logger';
 import { MatterConnectionService } from '@lib/matter-client/matter-connection.service';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -400,7 +402,25 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       userUuid,
       machineUuid,
     );
-    this.ensureMachineOperationAffected(count);
+    if (count > 0) return;
+
+    // Diagnose a failed conditional update using the latest usage record.
+    const usingMachine = await this.getUsingMachine(machineUuid);
+    if (!usingMachine) {
+      throw new NotFoundException({
+        statusCode: HttpStatus.NOT_FOUND,
+        error: 'Not Found',
+        message: 'Machine is not running.',
+        errorCode: 'MACHINE_NOT_RUNNING',
+      });
+    }
+
+    throw new ConflictException({
+      statusCode: HttpStatus.CONFLICT,
+      error: 'Conflict',
+      message: 'Machine is already registered to another user.',
+      errorCode: 'MACHINE_ALREADY_REGISTERED',
+    });
   }
 
   async disableMachineNotification(
