@@ -9,6 +9,7 @@ import { Loggable } from '@lib/logger';
 import { MatterConnectionService } from '@lib/matter-client/matter-connection.service';
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -338,20 +339,37 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
 
   async getMachineDetailByShortCode(
     shortCode: string,
+    userGender: Gender,
   ): Promise<MachineWithUsage> {
     const machine =
       await this.machineRepository.getMachineWithUsageByShortCode(shortCode);
     if (!machine) throw new NotFoundException('Machine not found.');
+    this.ensureMachineGenderMatches(machine, userGender);
     return machine;
   }
 
-  async getMachineDetail(uuid: string): Promise<MachineWithUsage> {
+  async getMachineDetail(
+    uuid: string,
+    userGender: Gender,
+  ): Promise<MachineWithUsage> {
     const machine = await this.machineRepository.getMachineWithUsage(uuid);
     if (!machine) {
       throw new NotFoundException('Machine not found.');
     }
 
+    this.ensureMachineGenderMatches(machine, userGender);
     return machine;
+  }
+
+  private ensureMachineGenderMatches(
+    machine: Machine,
+    userGender: Gender,
+  ): void {
+    if (machine.gender !== userGender) {
+      throw new ForbiddenException(
+        'Machine gender does not match user gender.',
+      );
+    }
   }
 
   async updateMachine(uuid: string, updateMachineReqDto: UpdateMachineReqDto) {
@@ -375,7 +393,9 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   async enableMachineNotification(
     userUuid: string,
     machineUuid: string,
+    userGender: Gender,
   ): Promise<void> {
+    await this.getMachineDetail(machineUuid, userGender);
     const count = await this.usingMachineRepository.enableMachineNotification(
       userUuid,
       machineUuid,

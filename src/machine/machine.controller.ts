@@ -15,6 +15,7 @@ import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -206,13 +207,20 @@ export class MachineController {
   @UseGuards(UserGuard)
   @ApiOkResponse({ type: GetMachineDetailResDto })
   @ApiBadRequestResponse({ description: 'Invalid short code.' })
+  @ApiForbiddenResponse({
+    description: 'Machine gender does not match user gender.',
+  })
   @ApiNotFoundResponse({ description: 'Machine not found.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async getMachineByShortlink(
     @Query() query: GetMachineByShortlinkReqDto,
+    @GetUser() user: User,
   ): Promise<GetMachineDetailResDto> {
     return new GetMachineDetailResDto(
-      await this.machineService.getMachineDetailByShortCode(query.shortCode),
+      await this.machineService.getMachineDetailByShortCode(
+        query.shortCode,
+        user.gender,
+      ),
     );
   }
 
@@ -228,13 +236,17 @@ export class MachineController {
     type: GetMachineDetailResDto,
     description: 'Successfully retrieved machine detail.',
   })
+  @ApiForbiddenResponse({
+    description: 'Machine gender does not match user gender.',
+  })
   @ApiNotFoundResponse({ description: 'Machine not found.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async getMachine(
     @Param('uuid', ParseUUIDPipe) uuid: string,
+    @GetUser() user: User,
   ): Promise<GetMachineDetailResDto> {
     return new GetMachineDetailResDto(
-      await this.machineService.getMachineDetail(uuid),
+      await this.machineService.getMachineDetail(uuid, user.gender),
     );
   }
 
@@ -303,6 +315,9 @@ export class MachineController {
     description:
       'Successfully registered machine usage and enabled notification.',
   })
+  @ApiForbiddenResponse({
+    description: 'Machine gender does not match user gender.',
+  })
   @ApiNotFoundResponse({
     description: 'Machine is not running or operating user mismatch.',
   })
@@ -311,7 +326,11 @@ export class MachineController {
     @Param('uuid', ParseUUIDPipe) machineUuid: string,
     @GetUser() user: User,
   ) {
-    await this.machineService.enableMachineNotification(user.uuid, machineUuid);
+    await this.machineService.enableMachineNotification(
+      user.uuid,
+      machineUuid,
+      user.gender,
+    );
     return { success: true };
   }
 
@@ -327,6 +346,9 @@ export class MachineController {
     type: SuccessResDto,
     description: 'Successfully toggled machine completion notification.',
   })
+  @ApiForbiddenResponse({
+    description: 'Machine gender does not match user gender.',
+  })
   @ApiNotFoundResponse({
     description: 'Machine is not running or operating user mismatch.',
   })
@@ -340,6 +362,7 @@ export class MachineController {
       await this.machineService.enableMachineNotification(
         user.uuid,
         machineUuid,
+        user.gender,
       );
     } else {
       await this.machineService.disableMachineNotification(
