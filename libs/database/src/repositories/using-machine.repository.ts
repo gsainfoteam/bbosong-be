@@ -15,25 +15,31 @@ export class UsingMachineRepository {
   private readonly logger = new Logger(UsingMachineRepository.name);
   constructor(private readonly databaseService: DatabaseService) {}
 
-  // Create or start using a machine
+  // Start a new session; repeated start events preserve the existing session.
   async createUsingMachine(
     machineUuid: string,
     userUuid?: string,
     notifyOnCompletion = true,
   ): Promise<UsingMachine> {
-    return await this.databaseService.usingMachine
-      .upsert({
-        where: { machineUuid },
-        create: {
-          machineUuid,
-          userUuid: userUuid ?? null,
-          notifyOnCompletion,
-        },
-        update: {
-          userUuid: userUuid ?? null,
-          notifyOnCompletion,
-          startedAt: new Date(),
-        },
+    return await this.databaseService
+      .$transaction(async (tx) => {
+        // Serialize lifecycle changes across processes, including retries.
+        await tx.$queryRaw`
+          SELECT "uuid" FROM "machine"
+          WHERE "uuid" = ${machineUuid}::uuid FOR UPDATE
+        `;
+        const activeUsage = await tx.usingMachine.findFirst({
+          where: { machineUuid, endedAt: null },
+        });
+        if (activeUsage) return activeUsage;
+
+        return tx.usingMachine.create({
+          data: {
+            machineUuid,
+            userUuid: userUuid ?? null,
+            notifyOnCompletion,
+          },
+        });
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -47,11 +53,12 @@ export class UsingMachineRepository {
       });
   }
 
-  // Get all machine usage records linked to a user
+  // Get only open sessions linked to a user
   async getUsingMachinesByUser(userUuid: string): Promise<UsingMachine[]> {
     return await this.databaseService.usingMachine
       .findMany({
-        where: { userUuid },
+        where: { userUuid, endedAt: null },
+        orderBy: [{ startedAt: 'desc' }, { uuid: 'desc' }],
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -74,6 +81,7 @@ export class UsingMachineRepository {
       .updateMany({
         where: {
           machineUuid,
+          endedAt: null,
           OR: [{ userUuid: null }, { userUuid: userUuid }],
         },
         data: {
@@ -104,6 +112,7 @@ export class UsingMachineRepository {
       .updateMany({
         where: {
           machineUuid,
+          endedAt: null,
           userUuid,
         },
         data: {
@@ -129,8 +138,8 @@ export class UsingMachineRepository {
     machineUuid: string,
   ): Promise<UsingMachine | null> {
     return await this.databaseService.usingMachine
-      .findUnique({
-        where: { machineUuid },
+      .findFirst({
+        where: { machineUuid, endedAt: null },
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -144,24 +153,42 @@ export class UsingMachineRepository {
       });
   }
 
-  // Delete usingMachine record when run completes or is canceled
-  async deleteUsingMachine(machineUuid: string): Promise<number> {
-    const result = await this.databaseService.usingMachine
-      .deleteMany({
-        where: { machineUuid },
+  // Close and return the session atomically, retaining its user and timestamps.
+  async finishUsingMachine(machineUuid: string): Promise<UsingMachine | null> {
+    return this.databaseService
+      .$transaction(async (tx) => {
+        await tx.$queryRaw`
+          SELECT "uuid" FROM "machine"
+          WHERE "uuid" = ${machineUuid}::uuid FOR UPDATE
+        `;
+        const finished = await tx.usingMachine.updateManyAndReturn({
+          where: { machineUuid, endedAt: null },
+          data: { endedAt: new Date() },
+        });
+        return finished[0] ?? null;
       })
       .catch((error) => {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          this.logger.error(
-            `deleteUsingMachine prisma error: ${error.message}`,
-          );
-          throw new InternalServerErrorException('Database Error');
-        }
-        this.logger.error(`deleteUsingMachine error: ${error}`);
-        throw new InternalServerErrorException('Unknown Error');
+        this.logger.error(`finishUsingMachine error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
       });
+  }
 
-    return result.count;
+  async getUsageHistoryByUser(
+    userUuid: string,
+    limit: number,
+    offset: number,
+  ): Promise<UsingMachine[]> {
+    return this.databaseService.usingMachine
+      .findMany({
+        where: { userUuid, endedAt: { not: null } },
+        orderBy: [{ startedAt: 'desc' }, { uuid: 'desc' }],
+        take: limit,
+        skip: offset,
+      })
+      .catch((error) => {
+        this.logger.error(`getUsageHistoryByUser error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
   }
 
   // Unlink user from usingMachine (set userUuid to null and disable notification)
@@ -173,6 +200,7 @@ export class UsingMachineRepository {
       .updateMany({
         where: {
           machineUuid,
+          endedAt: null,
           userUuid,
         },
         data: {

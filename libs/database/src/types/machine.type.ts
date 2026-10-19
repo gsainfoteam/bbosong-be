@@ -2,7 +2,8 @@ import {
   Location,
   Gender,
   MachineType,
-  Prisma,
+  Machine,
+  UsingMachine,
 } from 'generated/prisma/client';
 
 export type LaundryRoomSummary = {
@@ -12,10 +13,6 @@ export type LaundryRoomSummary = {
   unusedCount: number;
 };
 
-const machineWithUsageArgs = {
-  include: { currentUsage: true },
-} satisfies Prisma.MachineDefaultArgs;
-
-export type MachineWithUsage = Prisma.MachineGetPayload<
-  typeof machineWithUsageArgs
->;
+export type MachineWithUsage = Machine & {
+  currentUsage: UsingMachine | null;
+};

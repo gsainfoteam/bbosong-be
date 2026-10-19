@@ -55,21 +55,27 @@ describe('MachineService access and registration', () => {
     currentUsage: null,
   } as MachineWithUsage;
   const machineRepository = {
+    getMachine: jest.fn(),
     getMachineWithUsage: jest.fn(),
     getMachineWithUsageByShortCode: jest.fn(),
   };
   const usingMachineRepository = {
+    finishUsingMachine: jest.fn(),
     enableMachineNotification: jest.fn(),
     getUsingMachineByMachineUuid: jest.fn(),
   };
   let service: MachineService;
+  const notificationService = {
+    notifyMachineCompletion: jest.fn(),
+    notifyLaundryRoomAvailable: jest.fn(),
+  };
 
   beforeEach(() => {
     jest.resetAllMocks();
     service = new MachineService(
       machineRepository as never,
       usingMachineRepository as never,
-      {} as never,
+      notificationService as never,
       {} as never,
       {} as never,
       {} as never,
@@ -78,6 +84,9 @@ describe('MachineService access and registration', () => {
     machineRepository.getMachineWithUsageByShortCode.mockResolvedValue(machine);
     usingMachineRepository.enableMachineNotification.mockResolvedValue(1);
     usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue(null);
+    machineRepository.getMachine.mockResolvedValue(machine);
+    notificationService.notifyMachineCompletion.mockResolvedValue(undefined);
+    notificationService.notifyLaundryRoomAvailable.mockResolvedValue(undefined);
   });
 
   describe.each([
@@ -217,5 +226,50 @@ describe('MachineService access and registration', () => {
     expect(
       usingMachineRepository.getUsingMachineByMachineUuid,
     ).not.toHaveBeenCalled();
+  });
+
+  it('uses the closed session to notify its user after completion', async () => {
+    usingMachineRepository.finishUsingMachine.mockResolvedValue({
+      machineUuid,
+      userUuid,
+      notifyOnCompletion: true,
+      endedAt: new Date(),
+    });
+    await service.finishUsingMachine(machineUuid);
+    expect(notificationService.notifyMachineCompletion).toHaveBeenCalledWith(
+      userUuid,
+      machine,
+    );
+    expect(notificationService.notifyLaundryRoomAvailable).toHaveBeenCalledWith(
+      machine.location,
+      machine.gender,
+      machine.type,
+    );
+    expect(
+      usingMachineRepository.getUsingMachineByMachineUuid,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('does not send notifications again when the session has already ended', async () => {
+    usingMachineRepository.finishUsingMachine.mockResolvedValue(null);
+    await service.finishUsingMachine(machineUuid);
+    expect(notificationService.notifyMachineCompletion).not.toHaveBeenCalled();
+    expect(
+      notificationService.notifyLaundryRoomAvailable,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('retains completion behavior when the user disabled notification', async () => {
+    usingMachineRepository.finishUsingMachine.mockResolvedValue({
+      machineUuid,
+      userUuid,
+      notifyOnCompletion: false,
+      endedAt: new Date(),
+    });
+    await service.finishUsingMachine(machineUuid);
+    expect(notificationService.notifyMachineCompletion).not.toHaveBeenCalled();
+    expect(
+      notificationService.notifyLaundryRoomAvailable,
+    ).toHaveBeenCalledTimes(1);
   });
 });

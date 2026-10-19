@@ -42,8 +42,8 @@ export class MachineRepository {
         where: {
           gender: gender,
           isAvailable: true,
-          currentUsage: {
-            is: null,
+          usages: {
+            none: { endedAt: null },
           },
         },
         _count: {
@@ -75,7 +75,6 @@ export class MachineRepository {
         data: {
           ...data,
           isCommissioned: data.matterPayload ? false : undefined,
-          currentUsage: { create: {} },
         },
       })
       .catch((error) => {
@@ -110,10 +109,6 @@ export class MachineRepository {
               index: currentIndex,
             };
           }),
-        });
-
-        await tx.usingMachine.createMany({
-          data: created.map((machine) => ({ machineUuid: machine.uuid })),
         });
 
         return created;
@@ -179,7 +174,12 @@ export class MachineRepository {
     return await this.databaseService.machine
       .findUnique({
         where: { shortCode },
-        include: { currentUsage: true },
+        include: { usages: { where: { endedAt: null }, take: 1 } },
+      })
+      .then((machine) => {
+        if (!machine) return null;
+        const { usages, ...details } = machine;
+        return { ...details, currentUsage: usages[0] ?? null };
       })
       .catch((error) => {
         this.logger.error(`getMachineWithUsageByShortCode error: ${error}`);
@@ -191,7 +191,12 @@ export class MachineRepository {
     return await this.databaseService.machine
       .findUnique({
         where: { uuid },
-        include: { currentUsage: true },
+        include: { usages: { where: { endedAt: null }, take: 1 } },
+      })
+      .then((machine) => {
+        if (!machine) return null;
+        const { usages, ...details } = machine;
+        return { ...details, currentUsage: usages[0] ?? null };
       })
       .catch((error) => {
         this.logger.error(`getMachineWithUsage error: ${error}`);
@@ -253,6 +258,11 @@ export class MachineRepository {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
           if (error.code === 'P2025') {
             throw new NotFoundException('Machine not found.');
+          }
+          if (error.code === 'P2003') {
+            throw new ConflictException(
+              'Machine with usage history cannot be deleted.',
+            );
           }
           this.logger.error(`deleteMachine prisma error: ${error.message}`);
           throw new InternalServerErrorException('Database Error');

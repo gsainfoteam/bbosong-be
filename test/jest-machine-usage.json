@@ -1,0 +1,12 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "moduleNameMapper": {
+    "^@lib/([^/]+)(.*)$": "<rootDir>/libs/$1/src$2",
+    "^generated/(.*)$": "<rootDir>/generated/$1",
+    "^(\\.{1,2}/.*)\\.js$": "$1"
+  },
+  "testEnvironment": "node",
+  "testRegex": "machine-usage.integration-spec.ts$",
+  "transform": { "^.+\\.(t|j)s$": "ts-jest" }
+}
