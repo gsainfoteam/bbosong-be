@@ -70,7 +70,10 @@ export class WebPushService implements OnModuleInit {
         };
 
         try {
-          await webpush.sendNotification(pushSubscription, pushPayload);
+          // Time-sensitive laundry alerts should be delivered promptly, even during Android Doze.
+          await webpush.sendNotification(pushSubscription, pushPayload, {
+            urgency: 'high',
+          });
         } catch (error: unknown) {
           const statusCode =
             error instanceof webpush.WebPushError
