@@ -202,11 +202,6 @@ export class AuthService {
           tx,
         );
 
-        await this.userRefreshTokenRepository.deleteAllUserRefreshTokensInTx(
-          user.uuid,
-          tx,
-        );
-
         const token = this.generateOpaqueToken();
         const sessionId = this.generateSessionId();
         const hashedToken = this.hashRefreshToken(token);
@@ -509,8 +504,11 @@ export class AuthService {
     };
   }
 
-  async userLogout(userUuid: string): Promise<void> {
-    await this.userRefreshTokenRepository.deleteAllUserRefreshTokens(userUuid);
+  async userLogout(userUuid: string, sessionId: string): Promise<void> {
+    await this.userRefreshTokenRepository.deleteUserRefreshTokenBySessionId(
+      userUuid,
+      sessionId,
+    );
   }
 
   getMe(user: User): UserResDto {

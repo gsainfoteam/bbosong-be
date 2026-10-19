@@ -33,6 +33,6 @@ export class UserStrategy extends PassportStrategy(Strategy, 'user') {
       throw new UnauthorizedException('invalid session');
     }
 
-    return user;
+    return { ...user, sessionId };
   }
 }
