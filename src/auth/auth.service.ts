@@ -40,6 +40,7 @@ import {
 import { IssueTokenType } from './types/jwt-token.type';
 import { UserLoginDto } from './dto/req/user-login.dto';
 import { UserResDto } from './dto/res/user-res.dto';
+import { GetUsersResDto } from './dto/res/get-users-res.dto';
 import { ConsentRequiredException } from './exceptions/consent-required.exception';
 import { AuditLogService } from '@lib/audit-log';
 import { NotificationService } from '../notification/notification.service';
@@ -93,6 +94,10 @@ export class AuthService {
   async updateRole(userUuid: string, role: Role) {
     const user = await this.userRepository.updateUserRole(userUuid, role);
     return this.toUserResDto(user);
+  }
+
+  async getUsers(): Promise<GetUsersResDto[]> {
+    return this.userRepository.findUsersWithPushSubscriptions();
   }
 
   private toUserResDto(user: User): UserResDto {
