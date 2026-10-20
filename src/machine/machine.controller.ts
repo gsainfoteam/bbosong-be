@@ -309,7 +309,7 @@ export class MachineController {
   @ApiOperation({
     summary: 'Get machine power history',
     description:
-      'Retrieve power consumption records for a machine. Without `startedAt`, records for the last 1 hour are returned. With `startedAt`, all records recorded at or after that time are returned.',
+      'Retrieve power consumption records for a machine. Without `startedAt`, records for the last 1 hour are returned. With `startedAt`, records recorded at or after that time are returned. At most 5000 records are returned, oldest first.',
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)

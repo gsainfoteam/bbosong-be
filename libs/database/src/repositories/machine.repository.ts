@@ -26,6 +26,8 @@ import {
 } from 'src/machine/dto/req/create-machine-req.dto';
 import { Trace } from '@gsainfoteam/nest-observability';
 
+const MACHINE_POWER_QUERY_MAX_COUNT = 5000;
+
 @Loggable()
 @Injectable()
 @Trace()
@@ -364,6 +366,7 @@ export class MachineRepository {
         orderBy: {
           recordedAt: 'asc',
         },
+        take: MACHINE_POWER_QUERY_MAX_COUNT,
       })
       .catch((error) => {
         if (
