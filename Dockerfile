@@ -7,10 +7,11 @@ WORKDIR /usr/src/app
 FROM base AS installer
 # RUN bun install -g prisma
 COPY ./package.json ./bun.lock ./
+COPY ./patches ./patches
 
 FROM installer AS prod
 # COPY ./prisma/schema.prisma ./prisma/schema.prisma
-RUN --mount=type=secret,id=npmrc,target=/root/.npmrc bun install --production
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc bun install --production --frozen-lockfile
 # && bun prisma generate --generator=client
 
 FROM installer AS builder

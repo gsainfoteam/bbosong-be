@@ -2,6 +2,7 @@ import { MatterClient, MatterNode } from '@matter-server/ws-client';
 import {
   Inject,
   Injectable,
+  Logger,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
@@ -100,6 +101,7 @@ function boundedConcatMap<T>(
 
 @Injectable()
 export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(MatterConnectionService.name);
   private readonly clients = new Map<string, MatterClient>();
   private readonly lastPowerByMac = new Map<string, number>();
   private readonly listenerStreams = new Map<
@@ -124,7 +126,8 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
           throw error;
         }
         client.addEventListener('connection_lost', () => {
-          console.log(`Connection lost for site ${site.id}`);
+          if (!this.shouldReconnect) return;
+          this.logger.warn(`Connection lost for site ${site.id}`);
           setTimeout(() => {
             if (!this.shouldReconnect) return;
             void (async () => {
