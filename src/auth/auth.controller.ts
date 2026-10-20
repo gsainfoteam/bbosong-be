@@ -31,6 +31,7 @@ import { GetUser } from './decorator/get-user.decorator';
 import { UserLoginDto } from './dto/req/user-login.dto';
 import { JwtToken } from './dto/res/jwt-token.dto';
 import { UserResDto } from './dto/res/user-res.dto';
+import { GetUsersResDto } from './dto/res/get-users-res.dto';
 import { UserGuard } from './guard/user.guard';
 import { UpdateRoleReqDto } from './dto/req/update-role-req.dto';
 import { AdminGuard } from './guard/admin.guard';
@@ -124,6 +125,21 @@ export class AuthController {
   ): Promise<void> {
     await this.authService.userLogout(user.uuid, user.sessionId);
     this.clearRefreshTokenCookie(res);
+  }
+
+  @Get('users')
+  @ApiOperation({
+    summary: 'Get users and their push subscriptions (Admin only)',
+    description:
+      'Retrieve all non-deleted users with their currently registered push devices, registration times, and last successful push notification send times.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(AdminGuard)
+  @ApiOkResponse({ type: GetUsersResDto, isArray: true })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  @ApiForbiddenResponse({ description: 'User is not an admin.' })
+  async getUsers(): Promise<GetUsersResDto[]> {
+    return this.authService.getUsers();
   }
 
   @Get('me')

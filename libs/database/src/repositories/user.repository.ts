@@ -22,6 +22,37 @@ export class UserRepository {
 
   constructor(private readonly databaseService: DatabaseService) {}
 
+  async findUsersWithPushSubscriptions() {
+    return await this.databaseService.user
+      .findMany({
+        where: { deletedAt: null },
+        orderBy: [{ createdAt: 'desc' }, { uuid: 'asc' }],
+        select: {
+          uuid: true,
+          name: true,
+          email: true,
+          studentNumber: true,
+          gender: true,
+          role: true,
+          pushSubscriptions: {
+            orderBy: [{ createdAt: 'desc' }, { uuid: 'asc' }],
+            select: {
+              uuid: true,
+              userAgent: true,
+              createdAt: true,
+              lastActivatedAt: true,
+            },
+          },
+        },
+      })
+      .catch((error: unknown) => {
+        this.logger.error(
+          `findUsersWithPushSubscriptions error: ${String(error)}`,
+        );
+        throw new InternalServerErrorException('Database Error');
+      });
+  }
+
   async findUser(uuid: string): Promise<User> {
     return await this.databaseService.user
       .findFirstOrThrow({

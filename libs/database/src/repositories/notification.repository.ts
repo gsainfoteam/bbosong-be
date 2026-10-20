@@ -74,6 +74,22 @@ export class NotificationRepository {
     );
   }
 
+  async markPushSubscriptionActivated(uuid: string, activatedAt: Date) {
+    return this.run(
+      'markPushSubscriptionActivated',
+      this.databaseService.userPushSubscription.updateMany({
+        where: {
+          uuid,
+          OR: [
+            { lastActivatedAt: null },
+            { lastActivatedAt: { lt: activatedAt } },
+          ],
+        },
+        data: { lastActivatedAt: activatedAt },
+      }),
+    );
+  }
+
   async createLaundryRoomSubscription(
     userUuid: string,
     location: Location,

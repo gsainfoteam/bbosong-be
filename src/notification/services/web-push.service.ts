@@ -74,6 +74,17 @@ export class WebPushService implements OnModuleInit {
           await webpush.sendNotification(pushSubscription, pushPayload, {
             urgency: 'high',
           });
+
+          try {
+            await this.notificationRepository.markPushSubscriptionActivated(
+              sub.uuid,
+              new Date(),
+            );
+          } catch (activationError: unknown) {
+            this.logger.error(
+              `Failed to record successful web push for endpoint ${this.maskEndpoint(sub.endpoint)}: ${formatError(activationError)}`,
+            );
+          }
         } catch (error: unknown) {
           const statusCode =
             error instanceof webpush.WebPushError

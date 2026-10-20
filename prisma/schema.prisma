@@ -177,13 +177,14 @@ model MachinePower {
 }
 
 model UserPushSubscription {
-  uuid      String   @id @default(uuid()) @db.Uuid
-  userUuid  String   @map("user_uuid") @db.Uuid
-  endpoint  String   @unique @map("endpoint")
-  p256dh    String   @map("p256dh")
-  auth      String   @map("auth")
-  userAgent String?  @map("user_agent")
-  createdAt DateTime @default(now()) @map("created_at")
+  uuid            String    @id @default(uuid()) @db.Uuid
+  userUuid        String    @map("user_uuid") @db.Uuid
+  endpoint        String    @unique @map("endpoint")
+  p256dh          String    @map("p256dh")
+  auth            String    @map("auth")
+  userAgent       String?   @map("user_agent")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  lastActivatedAt DateTime? @map("last_activated_at")
 
   user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
 
