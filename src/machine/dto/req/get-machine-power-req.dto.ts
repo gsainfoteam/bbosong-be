@@ -5,7 +5,7 @@ import { IsDate, IsOptional } from 'class-validator';
 export class GetMachinePowerReqDto {
   @ApiPropertyOptional({
     description:
-      'Start of the time range. If provided, all records recorded at or after this time are returned. Defaults to the last 1 hour.',
+      'Start of the time range. If provided, records recorded at or after this time are returned, up to 5000. Defaults to the last 1 hour.',
     example: '2026-08-01T14:23:11.000Z',
     type: String,
     format: 'date-time',
