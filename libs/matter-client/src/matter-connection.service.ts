@@ -126,6 +126,7 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
           throw error;
         }
         client.addEventListener('connection_lost', () => {
+          if (!this.shouldReconnect) return;
           this.logger.warn(`Connection lost for site ${site.id}`);
           setTimeout(() => {
             if (!this.shouldReconnect) return;
