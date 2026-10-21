@@ -39,7 +39,11 @@ jest.mock(
     ),
   { virtual: true },
 );
-jest.mock('src/common/utils/format-error.util', () => ({}), { virtual: true });
+jest.mock(
+  'src/common/utils/format-error.util',
+  () => ({ formatError: String }),
+  { virtual: true },
+);
 jest.mock('../notification/notification.service', () => ({}));
 jest.mock('./shlink.service', () => ({}));
 
@@ -60,12 +64,14 @@ describe('MachineService access and registration', () => {
     getMachineWithUsageByShortCode: jest.fn(),
   };
   const usingMachineRepository = {
+    confirmCompletedAndRegister: jest.fn(),
     finishUsingMachine: jest.fn(),
     enableMachineNotification: jest.fn(),
     getUsingMachineByMachineUuid: jest.fn(),
   };
   let service: MachineService;
   const notificationService = {
+    notifyMachineReregistered: jest.fn(),
     notifyMachineCompletion: jest.fn(),
     notifyLaundryRoomAvailable: jest.fn(),
   };
@@ -191,6 +197,7 @@ describe('MachineService access and registration', () => {
     usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue({
       machineUuid,
       userUuid: '00000000-0000-4000-8000-000000000003',
+      startedAt: new Date(),
     });
 
     await expect(
@@ -203,6 +210,117 @@ describe('MachineService access and registration', () => {
         errorCode: 'MACHINE_ALREADY_REGISTERED',
       },
     });
+  });
+
+  it.each([30 * 60 * 1000 - 1, 30 * 60 * 1000, 31 * 60 * 1000])(
+    'classifies registration after %i milliseconds',
+    async (elapsed) => {
+      const now = Date.now();
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      usingMachineRepository.enableMachineNotification.mockResolvedValue(0);
+      usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue({
+        uuid: 'previous-usage',
+        userUuid: 'other-user',
+        startedAt: new Date(now - elapsed),
+      });
+      try {
+        await expect(
+          service.enableMachineNotification(userUuid, machineUuid, Gender.MALE),
+        ).rejects.toMatchObject({
+          response: {
+            errorCode:
+              elapsed >= 30 * 60 * 1000
+                ? 'MACHINE_COMPLETION_CONFIRMATION_REQUIRED'
+                : 'MACHINE_ALREADY_REGISTERED',
+            ...(elapsed >= 30 * 60 * 1000
+              ? { usageUuid: 'previous-usage' }
+              : {}),
+          },
+        });
+      } finally {
+        jest.restoreAllMocks();
+      }
+    },
+  );
+
+  it('notifies previous owner after successful replacement even if notifications were disabled', async () => {
+    usingMachineRepository.confirmCompletedAndRegister.mockResolvedValue({
+      userUuid: 'other-user',
+      notifyOnCompletion: false,
+    });
+    await service.confirmCompletedAndRegister(
+      userUuid,
+      machineUuid,
+      Gender.MALE,
+      'previous-usage',
+    );
+    expect(
+      usingMachineRepository.confirmCompletedAndRegister,
+    ).toHaveBeenCalledWith(userUuid, machineUuid, 'previous-usage');
+    expect(notificationService.notifyMachineReregistered).toHaveBeenCalledWith(
+      'other-user',
+      machine,
+    );
+    expect(
+      notificationService.notifyLaundryRoomAvailable,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('keeps successful replacement when push fails', async () => {
+    usingMachineRepository.confirmCompletedAndRegister.mockResolvedValue({
+      userUuid: 'other-user',
+    });
+    notificationService.notifyMachineReregistered.mockRejectedValue(
+      new Error('push unavailable'),
+    );
+    await expect(
+      service.confirmCompletedAndRegister(
+        userUuid,
+        machineUuid,
+        Gender.MALE,
+        'previous-usage',
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('does not notify when the transaction fails', async () => {
+    usingMachineRepository.confirmCompletedAndRegister.mockRejectedValue(
+      new Error('conflict'),
+    );
+    await expect(
+      service.confirmCompletedAndRegister(
+        userUuid,
+        machineUuid,
+        Gender.MALE,
+        'previous-usage',
+      ),
+    ).rejects.toThrow('conflict');
+    expect(
+      notificationService.notifyMachineReregistered,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('blocks confirmation for mismatched gender and missing machines', async () => {
+    await expect(
+      service.confirmCompletedAndRegister(
+        userUuid,
+        machineUuid,
+        Gender.FEMALE,
+        'previous-usage',
+      ),
+    ).rejects.toThrow(ForbiddenException);
+    machineRepository.getMachineWithUsage.mockResolvedValue(null);
+    await expect(
+      service.confirmCompletedAndRegister(
+        userUuid,
+        machineUuid,
+        Gender.MALE,
+        'previous-usage',
+      ),
+    ).rejects.toThrow(NotFoundException);
+    expect(
+      usingMachineRepository.confirmCompletedAndRegister,
+    ).not.toHaveBeenCalled();
   });
 
   it('preserves missing-machine errors before attempting registration', async () => {

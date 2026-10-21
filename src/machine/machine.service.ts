@@ -1,3 +1,4 @@
+import { MACHINE_REREGISTRATION_MIN_DURATION_MS } from '@lib/database/constants/machine-registration';
 import { Trace } from '@gsainfoteam/nest-observability';
 import { MachineRepository } from '@lib/database/repositories/machine.repository';
 import { UsingMachineRepository } from '@lib/database/repositories/using-machine.repository';
@@ -415,12 +416,52 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    if (
+      usingMachine.userUuid &&
+      usingMachine.userUuid !== userUuid &&
+      Date.now() - usingMachine.startedAt.getTime() >=
+        MACHINE_REREGISTRATION_MIN_DURATION_MS
+    ) {
+      throw new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        error: 'Conflict',
+        message: 'Confirm previous usage completion to register this machine.',
+        errorCode: 'MACHINE_COMPLETION_CONFIRMATION_REQUIRED',
+        usageUuid: usingMachine.uuid,
+      });
+    }
+
     throw new ConflictException({
       statusCode: HttpStatus.CONFLICT,
       error: 'Conflict',
       message: 'Machine is already registered to another user.',
       errorCode: 'MACHINE_ALREADY_REGISTERED',
     });
+  }
+
+  async confirmCompletedAndRegister(
+    userUuid: string,
+    machineUuid: string,
+    userGender: Gender,
+    usageUuid: string,
+  ): Promise<void> {
+    const machine = await this.getMachineDetail(machineUuid, userGender);
+    const previous =
+      await this.usingMachineRepository.confirmCompletedAndRegister(
+        userUuid,
+        machineUuid,
+        usageUuid,
+      );
+    if (previous.userUuid) {
+      await this.dispatchNotification(
+        () =>
+          this.notificationService.notifyMachineReregistered(
+            previous.userUuid!,
+            machine,
+          ),
+        `re-registration notification for machine ${machineUuid}`,
+      );
+    }
   }
 
   async disableMachineNotification(

@@ -35,6 +35,7 @@ describe('Machine usage history (PostgreSQL)', () => {
   const idleMachineUuid = randomUUID();
   const userUuid = randomUUID();
   const otherUserUuid = randomUUID();
+  const thirdUserUuid = randomUUID();
   const legacyUsageUuid = randomUUID();
   const legacyIdleUsageUuid = randomUUID();
   let prisma: PrismaClient;
@@ -58,7 +59,7 @@ describe('Machine usage history (PostgreSQL)', () => {
           ),
         );
       }
-      for (const uuid of [userUuid, otherUserUuid]) {
+      for (const uuid of [userUuid, otherUserUuid, thirdUserUuid]) {
         await client.query(
           `INSERT INTO "user" (uuid, name, email, student_number, gender, updated_at)
            VALUES ($1::uuid, 'test', 'test@example.com', $1::text, 'MALE', NOW())`,
@@ -231,5 +232,143 @@ describe('Machine usage history (PostgreSQL)', () => {
       'Machine with usage history cannot be deleted.',
     );
     await usages.finishUsingMachine(machineUuid);
+  });
+  describe('completion confirmation', () => {
+    let activeUuid: string;
+    beforeEach(async () => {
+      await usages.finishUsingMachine(machineUuid);
+      const active = await usages.createUsingMachine(
+        machineUuid,
+        userUuid,
+        false,
+      );
+      activeUuid = active.uuid;
+      await prisma.usingMachine.update({
+        where: { uuid: activeUuid },
+        data: { startedAt: new Date(Date.now() - 31 * 60 * 1000) },
+      });
+    });
+
+    it('preserves zero-duration history and starts a new user session', async () => {
+      const previous = await usages.confirmCompletedAndRegister(
+        otherUserUuid,
+        machineUuid,
+        activeUuid,
+      );
+      expect(previous).toMatchObject({ userUuid, notifyOnCompletion: false });
+      expect(previous.endedAt).toEqual(previous.startedAt);
+      const current = await usages.getUsingMachineByMachineUuid(machineUuid);
+      expect(current).toMatchObject({
+        userUuid: otherUserUuid,
+        endedAt: null,
+        notifyOnCompletion: true,
+      });
+      expect(current!.uuid).not.toBe(activeUuid);
+      expect(current!.startedAt.getTime()).toBeGreaterThan(
+        previous.startedAt.getTime(),
+      );
+      expect(
+        await usages.getUsageHistoryByUser(userUuid, 100, 0),
+      ).toContainEqual(previous);
+      expect(await usages.getUsingMachinesByUser(userUuid)).toEqual([]);
+    });
+
+    it('allows only one simultaneous confirmation and rejects stale retries', async () => {
+      const results = await Promise.allSettled([
+        usages.confirmCompletedAndRegister(
+          otherUserUuid,
+          machineUuid,
+          activeUuid,
+        ),
+        usages.confirmCompletedAndRegister(
+          thirdUserUuid,
+          machineUuid,
+          activeUuid,
+        ),
+      ]);
+      expect(
+        results.filter((result) => result.status === 'fulfilled'),
+      ).toHaveLength(1);
+      const rejected = results.find(
+        (result) => result.status === 'rejected',
+      ) as PromiseRejectedResult;
+      expect(rejected.reason).toMatchObject({
+        response: { errorCode: 'MACHINE_USAGE_CHANGED' },
+      });
+      expect(
+        await prisma.usingMachine.count({
+          where: { machineUuid, endedAt: null },
+        }),
+      ).toBe(1);
+      await expect(
+        usages.confirmCompletedAndRegister(userUuid, machineUuid, activeUuid),
+      ).rejects.toMatchObject({
+        response: { errorCode: 'MACHINE_USAGE_CHANGED' },
+      });
+    });
+
+    it('revalidates the duration and does not change short sessions', async () => {
+      const active = await prisma.usingMachine.update({
+        where: { uuid: activeUuid },
+        data: { startedAt: new Date() },
+      });
+      await expect(
+        usages.confirmCompletedAndRegister(
+          otherUserUuid,
+          machineUuid,
+          activeUuid,
+        ),
+      ).rejects.toMatchObject({
+        response: { errorCode: 'MACHINE_ALREADY_REGISTERED' },
+      });
+      expect(await usages.getUsingMachineByMachineUuid(machineUuid)).toEqual(
+        active,
+      );
+    });
+
+    it('rejects same-owner and unclaimed sessions', async () => {
+      await expect(
+        usages.confirmCompletedAndRegister(userUuid, machineUuid, activeUuid),
+      ).rejects.toMatchObject({
+        response: { errorCode: 'MACHINE_ALREADY_REGISTERED' },
+      });
+      await usages.unlinkUserFromUsingMachine(userUuid, machineUuid);
+      await expect(
+        usages.confirmCompletedAndRegister(
+          otherUserUuid,
+          machineUuid,
+          activeUuid,
+        ),
+      ).rejects.toMatchObject({
+        response: { errorCode: 'MACHINE_ALREADY_REGISTERED' },
+      });
+    });
+
+    it('rolls back previous completion when new session creation fails', async () => {
+      const before = await usages.getUsingMachineByMachineUuid(machineUuid);
+      await expect(
+        usages.confirmCompletedAndRegister(
+          randomUUID(),
+          machineUuid,
+          activeUuid,
+        ),
+      ).rejects.toThrow('Database Error');
+      expect(await usages.getUsingMachineByMachineUuid(machineUuid)).toEqual(
+        before,
+      );
+    });
+
+    it('rejects confirmation after normal completion', async () => {
+      await usages.finishUsingMachine(machineUuid);
+      await expect(
+        usages.confirmCompletedAndRegister(
+          otherUserUuid,
+          machineUuid,
+          activeUuid,
+        ),
+      ).rejects.toMatchObject({
+        response: { errorCode: 'MACHINE_NOT_RUNNING' },
+      });
+    });
   });
 });

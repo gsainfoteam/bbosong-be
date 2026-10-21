@@ -33,7 +33,8 @@ export class GetUsingMachineResDto {
   startedAt: Date;
 
   @ApiProperty({
-    description: 'Timestamp when usage ended; null while running',
+    description:
+      'Timestamp when usage ended; null while running. Equals startedAt for zero-duration completion confirmed by another user.',
     example: '2026-08-01T15:23:11.000Z',
     nullable: true,
   })
