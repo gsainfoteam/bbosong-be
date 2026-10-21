@@ -1,3 +1,5 @@
+import { ConfirmMachineCompletionReqDto } from './dto/req/confirm-machine-completion-req.dto';
+import { MachineRegistrationErrorResDto } from './dto/res/machine-registration-error-res.dto';
 import {
   Body,
   Controller,
@@ -334,7 +336,7 @@ export class MachineController {
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
-  @ApiOkResponse({
+  @ApiCreatedResponse({
     type: SuccessResDto,
     description:
       'Successfully registered machine usage and enabled notification.',
@@ -348,7 +350,8 @@ export class MachineController {
   })
   @ApiConflictResponse({
     description:
-      'Machine is already registered to another user (MACHINE_ALREADY_REGISTERED).',
+      'Under 30 minutes: MACHINE_ALREADY_REGISTERED. At least 30 minutes: MACHINE_COMPLETION_CONFIRMATION_REQUIRED with usageUuid.',
+    type: MachineRegistrationErrorResDto,
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async registerMachineUsage(
@@ -359,6 +362,42 @@ export class MachineController {
       user.uuid,
       machineUuid,
       user.gender,
+    );
+    return { success: true };
+  }
+
+  @Post('/:uuid/register/confirm-completion')
+  @ApiOperation({
+    summary: 'Confirm previous completion and register a new usage',
+    description:
+      'Requires a different registered user and at least 30 minutes since session start. Atomically closes the expected session with zero duration and starts a new one. Push is sent to the previous user after commit.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiCreatedResponse({ type: SuccessResDto })
+  @ApiBadRequestResponse({ description: 'Invalid machine UUID or usageUuid.' })
+  @ApiForbiddenResponse({
+    description: 'Machine gender does not match user gender.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Machine not found or MACHINE_NOT_RUNNING.',
+  })
+  @ApiConflictResponse({
+    type: MachineRegistrationErrorResDto,
+    description:
+      'MACHINE_USAGE_CHANGED: register again. MACHINE_ALREADY_REGISTERED: condition not met.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async confirmMachineCompletion(
+    @Param('uuid', ParseUUIDPipe) machineUuid: string,
+    @GetUser() user: User,
+    @Body() body: ConfirmMachineCompletionReqDto,
+  ): Promise<SuccessResDto> {
+    await this.machineService.confirmCompletedAndRegister(
+      user.uuid,
+      machineUuid,
+      user.gender,
+      body.usageUuid,
     );
     return { success: true };
   }
@@ -384,7 +423,8 @@ export class MachineController {
   })
   @ApiConflictResponse({
     description:
-      'When enabling notification: machine is already registered to another user (MACHINE_ALREADY_REGISTERED).',
+      'When enabling: MACHINE_ALREADY_REGISTERED or MACHINE_COMPLETION_CONFIRMATION_REQUIRED with usageUuid after 30 minutes.',
+    type: MachineRegistrationErrorResDto,
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async toggleMachineNotification(

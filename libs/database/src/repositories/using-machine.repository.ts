@@ -1,11 +1,15 @@
 import { Loggable } from '@lib/logger';
 import {
+  ConflictException,
+  HttpException,
+  NotFoundException,
   Injectable,
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
 import { DatabaseService } from '@lib/database/database.service';
 import { Prisma, UsingMachine } from 'generated/prisma/client';
+import { MACHINE_REREGISTRATION_MIN_DURATION_MS } from '../constants/machine-registration';
 import { Trace } from '@gsainfoteam/nest-observability';
 
 @Loggable()
@@ -101,6 +105,80 @@ export class UsingMachineRepository {
       });
 
     return result.count;
+  }
+
+  // Lock both the machine lifecycle and the usage row (notification/unlink updates).
+  async confirmCompletedAndRegister(
+    userUuid: string,
+    machineUuid: string,
+    expectedUsageUuid: string,
+  ): Promise<UsingMachine> {
+    return this.databaseService
+      .$transaction(async (tx) => {
+        await tx.$queryRaw`
+        SELECT "uuid" FROM "machine"
+        WHERE "uuid" = ${machineUuid}::uuid FOR UPDATE
+      `;
+        await tx.$queryRaw`
+        SELECT "uuid" FROM "using_machine"
+        WHERE "machine_uuid" = ${machineUuid}::uuid AND "ended_at" IS NULL
+        FOR UPDATE
+      `;
+        const active = await tx.usingMachine.findFirst({
+          where: { machineUuid, endedAt: null },
+        });
+        if (!active) {
+          throw new NotFoundException({
+            statusCode: 404,
+            error: 'Not Found',
+            message: 'Machine is not running.',
+            errorCode: 'MACHINE_NOT_RUNNING',
+          });
+        }
+        if (active.uuid !== expectedUsageUuid) {
+          throw new ConflictException({
+            statusCode: 409,
+            error: 'Conflict',
+            message: 'Machine usage has changed. Register again.',
+            errorCode: 'MACHINE_USAGE_CHANGED',
+          });
+        }
+        const now = new Date();
+        if (
+          !active.userUuid ||
+          active.userUuid === userUuid ||
+          now.getTime() - active.startedAt.getTime() <
+            MACHINE_REREGISTRATION_MIN_DURATION_MS
+        ) {
+          throw new ConflictException({
+            statusCode: 409,
+            error: 'Conflict',
+            message: 'Machine cannot be re-registered yet.',
+            errorCode: 'MACHINE_ALREADY_REGISTERED',
+          });
+        }
+        // Retain ownership/start timestamp while making the previous duration zero.
+        const previous = await tx.usingMachine.update({
+          where: { uuid: active.uuid },
+          data: { endedAt: active.startedAt, notifyOnCompletion: false },
+        });
+        await tx.usingMachine.create({
+          data: {
+            machineUuid,
+            userUuid,
+            startedAt: now,
+            notifyOnCompletion: true,
+          },
+        });
+        return previous;
+      })
+      .catch((error: unknown) => {
+        if (error instanceof HttpException) throw error;
+        this.logger.error(
+          `confirmCompletedAndRegister error: ${String(error)}`,
+        );
+        throw new InternalServerErrorException('Database Error');
+      });
   }
 
   // Disable completion notification for the operating user

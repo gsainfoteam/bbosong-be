@@ -89,6 +89,18 @@ export class NotificationService {
     await this.webPushService.sendWebPushToUser(userUuid, payload);
   }
 
+  async notifyMachineReregistered(
+    userUuid: string,
+    machine: Machine,
+  ): Promise<void> {
+    const typeName = this.machineTypeName(machine.type);
+    await this.webPushService.sendWebPushToUser(userUuid, {
+      title: `${typeName} 사용 종료 알림 🧺`,
+      body: `${machine.location}동 ${machine.index}번 ${typeName}: 다른 사용자가 완료를 확인하고 기기를 등록했어요`,
+      url: '/machine',
+    });
+  }
+
   async notifyLaundryRoomAvailable(
     location: Location,
     gender: Gender,
