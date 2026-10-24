@@ -42,6 +42,7 @@ export class MachineRepository {
       .groupBy({
         by: ['location', 'gender', 'type'],
         where: {
+          deletedAt: null,
           gender: gender,
           isAvailable: true,
           usages: {
@@ -135,6 +136,7 @@ export class MachineRepository {
   async getMachines(): Promise<Machine[]> {
     return await this.databaseService.machine
       .findMany({
+        where: { deletedAt: null },
         orderBy: [
           { location: 'asc' },
           { gender: 'asc' },
@@ -151,7 +153,7 @@ export class MachineRepository {
   async getMachine(uuid: string): Promise<Machine | null> {
     return await this.databaseService.machine
       .findUnique({
-        where: { uuid },
+        where: { uuid, deletedAt: null },
       })
       .catch((error) => {
         this.logger.error(`getMachine error: ${error}`);
@@ -165,7 +167,7 @@ export class MachineRepository {
     shortCode: string,
   ): Promise<Machine> {
     return await this.databaseService.machine.update({
-      where: { uuid },
+      where: { uuid, deletedAt: null },
       data: { shortUrl, shortCode },
     });
   }
@@ -175,7 +177,7 @@ export class MachineRepository {
   ): Promise<MachineWithUsage | null> {
     return await this.databaseService.machine
       .findUnique({
-        where: { shortCode },
+        where: { shortCode, deletedAt: null },
         include: { usages: { where: { endedAt: null }, take: 1 } },
       })
       .then((machine) => {
@@ -192,7 +194,7 @@ export class MachineRepository {
   async getMachineWithUsage(uuid: string): Promise<MachineWithUsage | null> {
     return await this.databaseService.machine
       .findUnique({
-        where: { uuid },
+        where: { uuid, deletedAt: null },
         include: { usages: { where: { endedAt: null }, take: 1 } },
       })
       .then((machine) => {
@@ -214,7 +216,7 @@ export class MachineRepository {
     matterPayload?: string,
   ) {
     const machine = await this.databaseService.machine.findUnique({
-      where: { uuid },
+      where: { uuid, deletedAt: null },
     });
     if (!machine) {
       throw new NotFoundException('Machine not found.');
@@ -228,7 +230,11 @@ export class MachineRepository {
 
     await this.databaseService.machine
       .update({
-        where: { uuid, ...(matterPayload ? { matterPayload: null } : {}) },
+        where: {
+          uuid,
+          deletedAt: null,
+          ...(matterPayload ? { matterPayload: null } : {}),
+        },
         data: {
           isAvailable,
           posX,
@@ -251,20 +257,14 @@ export class MachineRepository {
 
   async deleteMachine(uuid: string): Promise<void> {
     await this.databaseService.machine
-      .delete({
-        where: {
-          uuid: uuid,
-        },
+      .update({
+        where: { uuid, deletedAt: null },
+        data: { deletedAt: new Date() },
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
           if (error.code === 'P2025') {
             throw new NotFoundException('Machine not found.');
-          }
-          if (error.code === 'P2003') {
-            throw new ConflictException(
-              'Machine with usage history cannot be deleted.',
-            );
           }
           this.logger.error(`deleteMachine prisma error: ${error.message}`);
           throw new InternalServerErrorException('Database Error');
@@ -278,14 +278,14 @@ export class MachineRepository {
     await this.databaseService.machinePower
       .create({
         data: {
-          machineUuid: uuid,
           power,
+          machine: { connect: { uuid, deletedAt: null } },
         },
       })
       .catch((error) => {
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2003'
+          error.code === 'P2025'
         ) {
           throw new NotFoundException('Machine not found.');
         }
@@ -298,33 +298,25 @@ export class MachineRepository {
     macAddress: string,
     power: number,
   ): Promise<void> {
-    await this.databaseService.machinePower
-      .create({
-        data: {
-          power,
-          machine: {
-            connect: { macAddress },
-          },
-        },
+    const machine = await this.databaseService.machine
+      .findFirst({
+        where: { macAddress, deletedAt: null },
+        select: { uuid: true },
       })
       .catch((error) => {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2025'
-        ) {
-          throw new NotFoundException('Machine not found.');
-        }
         this.logger.error(`recordMachinePowerByMacAddress error: ${error}`);
         throw new InternalServerErrorException('Database Error');
       });
+    if (!machine) throw new NotFoundException('Machine not found.');
+    await this.recordMachinePower(machine.uuid, power);
   }
 
   async getMachineTypeByMacAddress(
     macAddress: string,
   ): Promise<MachineType | null> {
     return this.databaseService.machine
-      .findUnique({
-        where: { macAddress },
+      .findFirst({
+        where: { macAddress, deletedAt: null },
         select: { type: true },
       })
       .then((machine) => machine?.type ?? null)
@@ -340,7 +332,7 @@ export class MachineRepository {
   ): Promise<void> {
     await this.databaseService.machine
       .updateMany({
-        where: { macAddress, status: { not: status } },
+        where: { macAddress, deletedAt: null, status: { not: status } },
         data: { status },
       })
       .catch((error) => {
@@ -359,6 +351,7 @@ export class MachineRepository {
       .findMany({
         where: {
           machineUuid: uuid,
+          machine: { deletedAt: null },
           recordedAt: {
             gte: startedAt,
           },
@@ -385,14 +378,14 @@ export class MachineRepository {
     macAddress: string,
   ): Promise<void> {
     await this.databaseService.machine.update({
-      where: { uuid },
+      where: { uuid, deletedAt: null },
       data: { macAddress, isCommissioned: true },
     });
   }
 
   async resetMachineCommissioned(uuid: string): Promise<void> {
     await this.databaseService.machine.update({
-      where: { uuid },
+      where: { uuid, deletedAt: null },
       data: { isCommissioned: false },
     });
   }

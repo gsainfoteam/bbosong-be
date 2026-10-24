@@ -7,6 +7,8 @@ import {
   PrismaClient,
   Gender,
   Location,
+  Machine,
+  MachineStatus,
   MachineType,
 } from 'generated/prisma/client';
 import { UsingMachineRepository } from '@lib/database/repositories/using-machine.repository';
@@ -119,6 +121,7 @@ describe('Machine usage history (PostgreSQL)', () => {
       where: { uuid: legacyIdleUsageUuid },
     });
     expect(running).toMatchObject({ userUuid, endedAt: null });
+    expect((await machines.getMachine(machineUuid))?.deletedAt).toBeNull();
     expect(idle.userUuid).toBe(userUuid);
     expect(idle.endedAt!.getTime()).toBeGreaterThanOrEqual(
       idle.startedAt.getTime(),
@@ -228,9 +231,9 @@ describe('Machine usage history (PostgreSQL)', () => {
     await expect(
       prisma.usingMachine.create({ data: { machineUuid } }),
     ).rejects.toMatchObject({ code: 'P2002' });
-    await expect(machines.deleteMachine(machineUuid)).rejects.toThrow(
-      'Machine with usage history cannot be deleted.',
-    );
+    await expect(
+      prisma.machine.delete({ where: { uuid: machineUuid } }),
+    ).rejects.toMatchObject({ code: 'P2003' });
     await usages.finishUsingMachine(machineUuid);
   });
   describe('completion confirmation', () => {
@@ -369,6 +372,250 @@ describe('Machine usage history (PostgreSQL)', () => {
       ).rejects.toMatchObject({
         response: { errorCode: 'MACHINE_NOT_RUNNING' },
       });
+    });
+  });
+
+  describe('machine soft delete', () => {
+    let machine: Machine;
+    const room = {
+      location: Location.B,
+      gender: Gender.FEMALE,
+      type: MachineType.DRYER,
+    };
+
+    beforeEach(async () => {
+      machine = await machines.createMachine({ ...room, index: 1 });
+      machine = await machines.updateMachineShortUrl(
+        machine.uuid,
+        `https://test.example/${machine.uuid}`,
+        machine.uuid,
+      );
+      await machines.updateMachineCommissioned(machine.uuid, machine.uuid);
+      machine = (await machines.getMachine(machine.uuid))!;
+    });
+
+    afterEach(async () => {
+      if (await machines.getMachine(machine.uuid)) {
+        await machines.deleteMachine(machine.uuid);
+      }
+    });
+
+    it('preserves machine, open/closed sessions and power but hides every read path', async () => {
+      await usages.createUsingMachine(machine.uuid, userUuid);
+      await usages.finishUsingMachine(machine.uuid);
+      const active = await usages.createUsingMachine(machine.uuid, userUuid);
+      await machines.recordMachinePowerByMacAddress(machine.macAddress!, 10);
+      const sessions = await prisma.usingMachine.findMany({
+        where: { machineUuid: machine.uuid },
+        orderBy: { uuid: 'asc' },
+      });
+      const power = await machines.getMachinePowerFrom(machine.uuid);
+      expect(power).toHaveLength(1);
+      expect(await machines.getMachineWithUsage(machine.uuid)).toMatchObject({
+        currentUsage: active,
+      });
+
+      await machines.deleteMachine(machine.uuid);
+
+      const deleted = await prisma.machine.findUniqueOrThrow({
+        where: { uuid: machine.uuid },
+      });
+      expect(deleted.deletedAt).toBeInstanceOf(Date);
+      expect(deleted).toMatchObject({
+        ...machine,
+        deletedAt: expect.any(Date) as Date,
+        updatedAt: expect.any(Date) as Date,
+      });
+      expect(
+        await prisma.usingMachine.findMany({
+          where: { machineUuid: machine.uuid },
+          orderBy: { uuid: 'asc' },
+        }),
+      ).toEqual(sessions);
+      expect(
+        await prisma.machinePower.findMany({
+          where: { machineUuid: machine.uuid },
+        }),
+      ).toEqual(power);
+
+      expect(await machines.getMachines()).not.toContainEqual(
+        expect.objectContaining({ uuid: machine.uuid }),
+      );
+      expect(await machines.getMachine(machine.uuid)).toBeNull();
+      expect(await machines.getMachineWithUsage(machine.uuid)).toBeNull();
+      expect(
+        await machines.getMachineWithUsageByShortCode(machine.shortCode!),
+      ).toBeNull();
+      expect(
+        await machines.getMachineTypeByMacAddress(machine.macAddress!),
+      ).toBeNull();
+      expect(await machines.getMachinePowerFrom(machine.uuid)).toEqual([]);
+      expect(await machines.getLaundryRoomStatusByRoom(room.gender)).toEqual(
+        [],
+      );
+      expect(
+        await usages.getUsingMachineByMachineUuid(machine.uuid),
+      ).toBeNull();
+      for (const records of [
+        await usages.getUsingMachinesByUser(userUuid),
+        await usages.getUsageHistoryByUser(userUuid, 100, 0),
+      ]) {
+        expect(
+          records.some((record) => record.machineUuid === machine.uuid),
+        ).toBe(false);
+      }
+      await expect(machines.deleteMachine(machine.uuid)).rejects.toThrow(
+        'Machine not found.',
+      );
+      await expect(machines.deleteMachine(randomUUID())).rejects.toThrow(
+        'Machine not found.',
+      );
+    });
+
+    it('excludes deleted idle machines from laundry room availability counts', async () => {
+      expect(await machines.getLaundryRoomStatusByRoom(room.gender)).toEqual([
+        { ...room, unusedCount: 1 },
+      ]);
+      await machines.deleteMachine(machine.uuid);
+      expect(await machines.getLaundryRoomStatusByRoom(room.gender)).toEqual(
+        [],
+      );
+    });
+
+    it('blocks registration, lifecycle events and mutations after deletion', async () => {
+      const active = await usages.createUsingMachine(machine.uuid, userUuid);
+      await machines.deleteMachine(machine.uuid);
+      await expect(
+        usages.createUsingMachine(machine.uuid, otherUserUuid),
+      ).rejects.toThrow('Machine not found.');
+      await expect(
+        usages.confirmCompletedAndRegister(
+          otherUserUuid,
+          machine.uuid,
+          active.uuid,
+        ),
+      ).rejects.toThrow('Machine not found.');
+      expect(
+        await usages.enableMachineNotification(otherUserUuid, machine.uuid),
+      ).toBe(0);
+      expect(
+        await usages.disableMachineNotification(userUuid, machine.uuid),
+      ).toBe(0);
+      expect(
+        await usages.unlinkUserFromUsingMachine(userUuid, machine.uuid),
+      ).toBe(0);
+      expect(await usages.finishUsingMachine(machine.uuid)).toBeNull();
+      await expect(machines.updateMachine(machine.uuid, false)).rejects.toThrow(
+        'Machine not found.',
+      );
+      await expect(
+        machines.recordMachinePower(machine.uuid, 20),
+      ).rejects.toThrow('Machine not found.');
+      await expect(
+        machines.recordMachinePowerByMacAddress(machine.macAddress!, 20),
+      ).rejects.toThrow('Machine not found.');
+      await expect(
+        machines.updateMachineCommissioned(machine.uuid, 'replacement-mac'),
+      ).rejects.toMatchObject({ code: 'P2025' });
+      await expect(
+        machines.resetMachineCommissioned(machine.uuid),
+      ).rejects.toMatchObject({ code: 'P2025' });
+      await expect(
+        machines.updateMachineShortUrl(
+          machine.uuid,
+          'https://test.example/new',
+          'new',
+        ),
+      ).rejects.toMatchObject({ code: 'P2025' });
+      await machines.updateMachineStatusByMacAddress(
+        machine.macAddress!,
+        MachineStatus.DRY,
+      );
+      expect(
+        await prisma.machine.findUnique({ where: { uuid: machine.uuid } }),
+      ).toMatchObject({ status: machine.status });
+      expect(
+        await prisma.usingMachine.findUnique({ where: { uuid: active.uuid } }),
+      ).toEqual(active);
+    });
+
+    it('reuses deleted slots and MACs while rejecting active duplicates and old QR codes', async () => {
+      await expect(
+        machines.createMachine({ ...room, index: 1 }),
+      ).rejects.toThrow('Machine already exists.');
+      await machines.deleteMachine(machine.uuid);
+      const replacement = await machines.createMachine({ ...room, index: 1 });
+      await machines.updateMachineCommissioned(
+        replacement.uuid,
+        machine.macAddress!,
+      );
+      expect(
+        await machines.getMachineTypeByMacAddress(machine.macAddress!),
+      ).toBe(room.type);
+      await machines.recordMachinePowerByMacAddress(machine.macAddress!, 30);
+      expect(await machines.getMachinePowerFrom(replacement.uuid)).toHaveLength(
+        1,
+      );
+      expect(
+        await prisma.machinePower.count({
+          where: { machineUuid: machine.uuid },
+        }),
+      ).toBe(0);
+      await expect(
+        machines.updateMachineShortUrl(
+          replacement.uuid,
+          machine.shortUrl!,
+          machine.shortCode!,
+        ),
+      ).rejects.toMatchObject({ code: 'P2002' });
+      expect(
+        await machines.getMachineWithUsageByShortCode(machine.shortCode!),
+      ).toBeNull();
+      const other = await machines.createMachine({ ...room, index: 2 });
+      await expect(
+        machines.updateMachineCommissioned(other.uuid, machine.macAddress!),
+      ).rejects.toMatchObject({ code: 'P2002' });
+      await machines.deleteMachine(replacement.uuid);
+      await machines.deleteMachine(other.uuid);
+      const batch = await machines.createMultipleMachines({
+        ...room,
+        startIndex: 1,
+        endIndex: 2,
+      });
+      expect(batch.map((item) => item.index)).toEqual([1, 2]);
+      await expect(
+        machines.createMultipleMachines({
+          ...room,
+          startIndex: 1,
+          endIndex: 3,
+        }),
+      ).rejects.toThrow('Machine already exists.');
+      expect(
+        await prisma.machine.count({ where: { ...room, deletedAt: null } }),
+      ).toBe(2);
+      for (const item of batch) await machines.deleteMachine(item.uuid);
+    });
+
+    it('serializes deletion with session creation without losing records', async () => {
+      const results = await Promise.allSettled([
+        usages.createUsingMachine(machine.uuid, userUuid),
+        machines.deleteMachine(machine.uuid),
+      ]);
+      expect(results[1].status).toBe('fulfilled');
+      expect(await machines.getMachine(machine.uuid)).toBeNull();
+      const sessions = await prisma.usingMachine.findMany({
+        where: { machineUuid: machine.uuid },
+      });
+      expect(sessions).toHaveLength(results[0].status === 'fulfilled' ? 1 : 0);
+      if (results[0].status === 'rejected') {
+        expect(results[0].reason).toMatchObject({ status: 404 });
+      }
+      await expect(usages.createUsingMachine(machine.uuid)).rejects.toThrow(
+        'Machine not found.',
+      );
+      expect(await usages.getUsingMachinesByUser(userUuid)).not.toContainEqual(
+        expect.objectContaining({ machineUuid: machine.uuid }),
+      );
     });
   });
 });
