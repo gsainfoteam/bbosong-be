@@ -191,6 +191,33 @@ export class MatterConnectionService implements OnModuleInit, OnModuleDestroy {
     throw new Error(`Node with mac address ${macAddress} not found`);
   }
 
+  async getAvailableMacAddressesBySite(): Promise<Map<string, Set<string>>> {
+    const sites = new Map<string, Set<string>>();
+    await Promise.all(
+      [...this.clients].map(async ([siteId, client]) => {
+        if (!client.connection.connected) return;
+        try {
+          // Refresh server reachability; cached power values are not heartbeats.
+          const nodes = await client.getNodes(false, 10_000);
+          if (!client.connection.connected) return;
+          sites.set(
+            siteId,
+            new Set(
+              nodes
+                .filter((node) => node.available && node.serialNumber)
+                .map((node) => node.serialNumber),
+            ),
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Failed to check connectivity for site ${siteId}: ${error}`,
+          );
+        }
+      }),
+    );
+    return sites;
+  }
+
   addPowerListener(callback: PowerListener): () => Promise<void> {
     const stream = this.createListenerStream(callback);
     this.listenerStreams.set(callback, stream);

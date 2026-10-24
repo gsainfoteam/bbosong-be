@@ -6,7 +6,13 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '@lib/database/database.service';
 
-import { Location, Gender, MachineType, Prisma } from 'generated/prisma/client';
+import {
+  Location,
+  Gender,
+  MachineType,
+  Prisma,
+  Role,
+} from 'generated/prisma/client';
 import { PrismaTransaction } from '@lib/database/types';
 import { Trace } from '@gsainfoteam/nest-observability';
 
@@ -86,6 +92,20 @@ export class NotificationRepository {
           ],
         },
         data: { lastActivatedAt: activatedAt },
+      }),
+    );
+  }
+
+  async getAdminPushRecipients() {
+    return this.run(
+      'getAdminPushRecipients',
+      this.databaseService.user.findMany({
+        where: {
+          deletedAt: null,
+          role: Role.ADMIN,
+          pushSubscriptions: { some: {} },
+        },
+        select: { uuid: true },
       }),
     );
   }

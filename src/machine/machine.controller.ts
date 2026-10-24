@@ -28,6 +28,7 @@ import { AdminGuard } from '../auth/guard/admin.guard';
 import { GetUser } from '../auth/decorator/get-user.decorator';
 import { User } from 'generated/prisma/client';
 import { MachineService } from './machine.service';
+import { MachineConnectivityService } from './machine-connectivity.service';
 import { GetMachineByShortlinkReqDto } from './dto/req/get-machine-by-shortlink-req.dto';
 import { GetLaundryRoomStatusReqDto } from './dto/req/get-laundry-room-status-req.dto';
 import { GetLaundryRoomStatusResDto } from './dto/res/get-laundry-room-status-res.dto';
@@ -52,7 +53,10 @@ import { SuccessResDto } from '../common/dto/res/success-res.dto';
 
 @Controller('machine')
 export class MachineController {
-  constructor(private readonly machineService: MachineService) {}
+  constructor(
+    private readonly machineService: MachineService,
+    private readonly machineConnectivityService: MachineConnectivityService,
+  ) {}
 
   @Post('/links/backfill')
   @ApiOperation({
@@ -176,7 +180,11 @@ export class MachineController {
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async getMachines(): Promise<GetMachineResDto[]> {
     return (await this.machineService.getMachines()).map(
-      (machine) => new GetMachineResDto(machine),
+      (machine) =>
+        new GetMachineResDto(
+          machine,
+          this.machineConnectivityService.get(machine),
+        ),
     );
   }
 
@@ -241,11 +249,13 @@ export class MachineController {
     @Query() query: GetMachineByShortlinkReqDto,
     @GetUser() user: User,
   ): Promise<GetMachineDetailResDto> {
+    const machine = await this.machineService.getMachineDetailByShortCode(
+      query.shortCode,
+      user.gender,
+    );
     return new GetMachineDetailResDto(
-      await this.machineService.getMachineDetailByShortCode(
-        query.shortCode,
-        user.gender,
-      ),
+      machine,
+      this.machineConnectivityService.get(machine),
     );
   }
 
@@ -270,8 +280,13 @@ export class MachineController {
     @Param('uuid', ParseUUIDPipe) uuid: string,
     @GetUser() user: User,
   ): Promise<GetMachineDetailResDto> {
+    const machine = await this.machineService.getMachineDetail(
+      uuid,
+      user.gender,
+    );
     return new GetMachineDetailResDto(
-      await this.machineService.getMachineDetail(uuid, user.gender),
+      machine,
+      this.machineConnectivityService.get(machine),
     );
   }
 

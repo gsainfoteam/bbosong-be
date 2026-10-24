@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import type { MachineConnectivity } from '../../machine-connectivity.service';
 import {
   Gender,
   Location,
@@ -82,7 +83,24 @@ export class GetMachineResDto {
   })
   shortCode: string | null;
 
-  constructor(machine: Machine) {
+  @ApiProperty({
+    description:
+      'Matter connectivity: true online, false offline after 60 seconds unavailable, null uncommissioned or pending first check',
+    type: Boolean,
+    nullable: true,
+  })
+  isOnline: boolean | null;
+
+  @ApiProperty({
+    description:
+      'Last time Matter Server confirmed the device reachable; kept in memory and reset on backend restart',
+    type: String,
+    format: 'date-time',
+    nullable: true,
+  })
+  lastSeenAt: Date | null;
+
+  constructor(machine: Machine, connectivity: MachineConnectivity) {
     this.uuid = machine.uuid;
     this.type = machine.type;
     this.location = machine.location;
@@ -94,5 +112,7 @@ export class GetMachineResDto {
     this.status = machine.status;
     this.shortUrl = machine.shortUrl;
     this.shortCode = machine.shortCode;
+    this.isOnline = connectivity.isOnline;
+    this.lastSeenAt = connectivity.lastSeenAt;
   }
 }

@@ -135,6 +135,21 @@ export class NotificationService {
     );
   }
 
+  async notifyMachineOffline(machine: Machine): Promise<void> {
+    const recipients =
+      await this.notificationRepository.getAdminPushRecipients();
+    const typeName = this.machineTypeName(machine.type);
+    await Promise.all(
+      recipients.map(({ uuid }) =>
+        this.webPushService.sendWebPushToUser(uuid, {
+          title: '기기 연결 끊김 알림',
+          body: `${machine.location}동 ${machine.gender === Gender.MALE ? '남성' : '여성'} 세탁실 ${machine.index}번 ${typeName}의 연결이 끊겼습니다. 기기와 네트워크를 확인해 주세요.`,
+          url: '/admin/machines',
+        }),
+      ),
+    );
+  }
+
   async deleteAllUserPushSubscriptionsInTx(
     userUuid: string,
     tx: PrismaTransaction,
