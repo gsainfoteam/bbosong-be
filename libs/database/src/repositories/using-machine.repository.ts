@@ -28,10 +28,12 @@ export class UsingMachineRepository {
     return await this.databaseService
       .$transaction(async (tx) => {
         // Serialize lifecycle changes across processes, including retries.
-        await tx.$queryRaw`
+        const machines = await tx.$queryRaw<{ uuid: string }[]>`
           SELECT "uuid" FROM "machine"
-          WHERE "uuid" = ${machineUuid}::uuid FOR UPDATE
+          WHERE "uuid" = ${machineUuid}::uuid AND "deleted_at" IS NULL
+          FOR UPDATE
         `;
+        if (!machines.length) throw new NotFoundException('Machine not found.');
         const activeUsage = await tx.usingMachine.findFirst({
           where: { machineUuid, endedAt: null },
         });
@@ -46,6 +48,7 @@ export class UsingMachineRepository {
         });
       })
       .catch((error) => {
+        if (error instanceof HttpException) throw error;
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
           this.logger.error(
             `createUsingMachine prisma error: ${error.message}`,
@@ -61,7 +64,7 @@ export class UsingMachineRepository {
   async getUsingMachinesByUser(userUuid: string): Promise<UsingMachine[]> {
     return await this.databaseService.usingMachine
       .findMany({
-        where: { userUuid, endedAt: null },
+        where: { userUuid, endedAt: null, machine: { deletedAt: null } },
         orderBy: [{ startedAt: 'desc' }, { uuid: 'desc' }],
       })
       .catch((error) => {
@@ -85,6 +88,7 @@ export class UsingMachineRepository {
       .updateMany({
         where: {
           machineUuid,
+          machine: { deletedAt: null },
           endedAt: null,
           OR: [{ userUuid: null }, { userUuid: userUuid }],
         },
@@ -115,10 +119,12 @@ export class UsingMachineRepository {
   ): Promise<UsingMachine> {
     return this.databaseService
       .$transaction(async (tx) => {
-        await tx.$queryRaw`
+        const machines = await tx.$queryRaw<{ uuid: string }[]>`
         SELECT "uuid" FROM "machine"
-        WHERE "uuid" = ${machineUuid}::uuid FOR UPDATE
+        WHERE "uuid" = ${machineUuid}::uuid AND "deleted_at" IS NULL
+        FOR UPDATE
       `;
+        if (!machines.length) throw new NotFoundException('Machine not found.');
         await tx.$queryRaw`
         SELECT "uuid" FROM "using_machine"
         WHERE "machine_uuid" = ${machineUuid}::uuid AND "ended_at" IS NULL
@@ -190,6 +196,7 @@ export class UsingMachineRepository {
       .updateMany({
         where: {
           machineUuid,
+          machine: { deletedAt: null },
           endedAt: null,
           userUuid,
         },
@@ -217,7 +224,7 @@ export class UsingMachineRepository {
   ): Promise<UsingMachine | null> {
     return await this.databaseService.usingMachine
       .findFirst({
-        where: { machineUuid, endedAt: null },
+        where: { machineUuid, endedAt: null, machine: { deletedAt: null } },
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -235,10 +242,12 @@ export class UsingMachineRepository {
   async finishUsingMachine(machineUuid: string): Promise<UsingMachine | null> {
     return this.databaseService
       .$transaction(async (tx) => {
-        await tx.$queryRaw`
+        const machines = await tx.$queryRaw<{ uuid: string }[]>`
           SELECT "uuid" FROM "machine"
-          WHERE "uuid" = ${machineUuid}::uuid FOR UPDATE
+          WHERE "uuid" = ${machineUuid}::uuid AND "deleted_at" IS NULL
+          FOR UPDATE
         `;
+        if (!machines.length) return null;
         const finished = await tx.usingMachine.updateManyAndReturn({
           where: { machineUuid, endedAt: null },
           data: { endedAt: new Date() },
@@ -258,7 +267,11 @@ export class UsingMachineRepository {
   ): Promise<UsingMachine[]> {
     return this.databaseService.usingMachine
       .findMany({
-        where: { userUuid, endedAt: { not: null } },
+        where: {
+          userUuid,
+          endedAt: { not: null },
+          machine: { deletedAt: null },
+        },
         orderBy: [{ startedAt: 'desc' }, { uuid: 'desc' }],
         take: limit,
         skip: offset,
@@ -278,6 +291,7 @@ export class UsingMachineRepository {
       .updateMany({
         where: {
           machineUuid,
+          machine: { deletedAt: null },
           endedAt: null,
           userUuid,
         },

@@ -295,13 +295,13 @@ export class MachineController {
   @Delete(':uuid')
   @ApiOperation({
     summary: 'Delete a machine',
-    description: 'Delete a machine by its UUID (Admin only).',
+    description:
+      'Soft delete a machine by its UUID, preserving usage and power history (Admin only).',
   })
   @ApiBearerAuth('user')
   @UseGuards(AdminGuard)
   @ApiOkResponse({ description: 'Machine deleted successfully.' })
   @ApiNotFoundResponse({ description: 'Machine not found.' })
-  @ApiConflictResponse({ description: 'Machine has usage history.' })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async deleteMachine(@Param('uuid', ParseUUIDPipe) uuid: string) {
     await this.machineService.deleteMachine(uuid);
