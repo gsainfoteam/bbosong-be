@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { GetMachineResDto } from './get-machine-res.dto';
 import { MachineWithUsage } from '@lib/database/types/machine.type';
 import { UsingMachine } from 'generated/prisma/browser';
+import type { MachineConnectivity } from '../../machine-connectivity.service';
 
 export class MachineUsageInfoDto {
   @ApiProperty({
@@ -45,8 +46,8 @@ export class GetMachineDetailResDto extends GetMachineResDto {
   })
   currentUsage: MachineUsageInfoDto | null;
 
-  constructor(machine: MachineWithUsage) {
-    super(machine);
+  constructor(machine: MachineWithUsage, connectivity: MachineConnectivity) {
+    super(machine, connectivity);
     this.currentUsage = machine.currentUsage
       ? new MachineUsageInfoDto(machine.currentUsage)
       : null;

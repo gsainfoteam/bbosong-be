@@ -87,14 +87,6 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
             `Machine ${machine.uuid} mac address is not set but it is commissioned`,
           );
         }
-        try {
-          this.matterConnectionService.get(machine.macAddress);
-        } catch (error) {
-          console.error(
-            `Machine ${machine.uuid} connection failed: ${error}, set isCommissioned to false`,
-          );
-          await this.machineRepository.resetMachineCommissioned(machine.uuid);
-        }
       }
     }
 
