@@ -83,7 +83,7 @@ export class NotificationService {
     const payload = {
       title: `${typeName} 완료 알림 🧺`,
       body: `${machine.location}동 ${machine.index}번 ${typeName} 작동이 완료되었습니다. 빨래를 수거해 주세요!`,
-      url: '/machine',
+      url: '/',
     };
 
     await this.webPushService.sendWebPushToUser(userUuid, payload);
@@ -97,7 +97,7 @@ export class NotificationService {
     await this.webPushService.sendWebPushToUser(userUuid, {
       title: `${typeName} 사용 종료 알림 🧺`,
       body: `${machine.location}동 ${machine.index}번 ${typeName}: 다른 사용자가 완료를 확인하고 기기를 등록했어요`,
-      url: '/machine',
+      url: '/',
     });
   }
 
@@ -119,7 +119,7 @@ export class NotificationService {
     const payload = {
       title: '빈 기기 발생 알림 🧺',
       body: `${location}동 ${gender === Gender.MALE ? '남성' : '여성'} 세탁실에 빈 ${typeName}가 생겼습니다!`,
-      url: '/machine',
+      url: '/',
     };
 
     await Promise.all(
