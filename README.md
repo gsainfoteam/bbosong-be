@@ -27,30 +27,33 @@
 
 ## Project setup
 
-Use Node.js 24.22.1 or a newer 24.x release and Bun 1.4.2. The pinned Node.js
-version is in `.node-version`; `fnm install` can install it.
+Use Bun 1.4.4 or a newer 1.x release. The pinned Bun version is in `.bun-version`.
 See [the CVE-2026-111497 response](docs/cve-2026-111497.md) for runtime and
 deployment details.
 
 ```bash
 $ bun install --frozen-lockfile
-$ bun x prisma generate
+$ bunx --bun prisma generate
 ```
 
 ## Compile and run the project
 
 ```bash
 # development
-$ npm run start
+$ bun run start
 
 # watch mode
-$ npm run start:dev
+$ bun --bun run start:dev
 
 # production mode
-$ npm run start:prod
+$ bun run start:prod
 ```
 
 ## Run tests
+
+The existing Jest suite runs with Node.js. Use a patched Node.js release
+(22.23.4, 24.22.1, or 26.12.1 or newer within that major version).
+The Bun runtime security regression runs with `bun run test:brotli-security`.
 
 ```bash
 # unit tests

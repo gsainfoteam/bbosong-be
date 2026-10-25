@@ -6,17 +6,18 @@
   "private": true,
   "license": "UNLICENSED",
   "engines": {
-    "node": "^24.22.1"
+    "bun": "^1.4.4"
   },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "nest build && node --import ./dist/instrumentation.js ./dist/main.js",
+    "start": "nest build && bun --preload ./dist/instrumentation.js ./dist/main.js",
     "start:dev": "nest start --watch",
     "start:debug": "nest build && NODE_OPTIONS='--import ./dist/instrumentation.js' nest start --debug --watch",
-    "start:prod": "node --import ./dist/instrumentation.js ./dist/main.js",
+    "start:prod": "bun --preload ./dist/instrumentation.js ./dist/main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
+    "test:brotli-security": "bun test test/brotli-security.test.mjs",
     "test:matter-client-logging": "node --test test/matter-client-logging.test.mjs",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
