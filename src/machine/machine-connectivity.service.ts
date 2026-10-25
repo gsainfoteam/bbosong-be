@@ -87,6 +87,8 @@ export class MachineConnectivityService
     for (const machine of machines) {
       if (machine.deletedAt || !machine.isCommissioned) continue;
       monitored.add(machine.uuid);
+      // Missing sites indicate a failed query, not confirmed device unavailability.
+      if (!availableBySite.has(machine.location)) continue;
       const state: ConnectionState = {
         ...(this.states.get(machine.uuid) ?? {
           isOnline: null,

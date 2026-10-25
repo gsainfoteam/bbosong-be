@@ -75,7 +75,9 @@ describe('Machine connectivity', () => {
   it('debounces unavailability for 60 seconds, sends one alert and preserves lastSeenAt', async () => {
     await service.onModuleInit();
     const lastSeenAt = service.get(machine).lastSeenAt;
-    matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
     await jest.advanceTimersByTimeAsync(60_000);
     expect(service.get(machine).isOnline).toBe(true);
     expect(notification.notifyMachineOffline).not.toHaveBeenCalled();
@@ -88,27 +90,35 @@ describe('Machine connectivity', () => {
 
   it('resets the grace period on recovery and alerts again only after a new outage', async () => {
     await service.onModuleInit();
-    matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
     await jest.advanceTimersByTimeAsync(60_000);
     matter.getAvailableMacAddressesBySite.mockResolvedValue(
       new Map([['A', new Set(['mac-1'])]]),
     );
     await jest.advanceTimersByTimeAsync(30_000);
     expect(notification.notifyMachineOffline).not.toHaveBeenCalled();
-    matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
     await jest.advanceTimersByTimeAsync(90_000);
     matter.getAvailableMacAddressesBySite.mockResolvedValue(
       new Map([['A', new Set(['mac-1'])]]),
     );
     await jest.advanceTimersByTimeAsync(30_000);
     expect(service.get(machine).isOnline).toBe(true);
-    matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
     await jest.advanceTimersByTimeAsync(90_000);
     expect(notification.notifyMachineOffline).toHaveBeenCalledTimes(2);
   });
 
   it('detects commissioned devices missing on startup, even when never seen', async () => {
-    matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
     await service.onModuleInit();
     expect(service.get(machine)).toEqual({ isOnline: null, lastSeenAt: null });
     await jest.advanceTimersByTimeAsync(60_000);
@@ -118,11 +128,87 @@ describe('Machine connectivity', () => {
 
   it('requires the device to belong to the configured site', async () => {
     matter.getAvailableMacAddressesBySite.mockResolvedValue(
-      new Map([['B', new Set(['mac-1'])]]),
+      new Map([
+        ['A', new Set<string>()],
+        ['B', new Set(['mac-1'])],
+      ]),
     );
     await service.onModuleInit();
     await jest.advanceTimersByTimeAsync(60_000);
     expect(service.get(machine).isOnline).toBe(false);
+  });
+
+  it.each([true, false])(
+    'preserves the last confirmed state during failed site queries (online=%s)',
+    async (online) => {
+      matter.getAvailableMacAddressesBySite.mockResolvedValue(
+        new Map([['A', new Set(online ? ['mac-1'] : [])]]),
+      );
+      await service.onModuleInit();
+      await jest.advanceTimersByTimeAsync(60_000);
+      const confirmed = service.get(machine);
+      const alertCount = notification.notifyMachineOffline.mock.calls.length;
+      expect(confirmed.isOnline).toBe(online);
+
+      matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+      await jest.advanceTimersByTimeAsync(180_000);
+      expect(service.get(machine)).toEqual(confirmed);
+      expect(notification.notifyMachineOffline).toHaveBeenCalledTimes(
+        alertCount,
+      );
+    },
+  );
+
+  it('keeps an unobserved device unknown until its site is queried successfully', async () => {
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+    await service.onModuleInit();
+    await jest.advanceTimersByTimeAsync(120_000);
+    expect(service.get(machine)).toEqual({ isOnline: null, lastSeenAt: null });
+    expect(notification.notifyMachineOffline).not.toHaveBeenCalled();
+
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(service.get(machine).isOnline).toBeNull();
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(service.get(machine).isOnline).toBe(false);
+    expect(notification.notifyMachineOffline).toHaveBeenCalledTimes(1);
+  });
+
+  it('continues checking successful sites while another site query fails', async () => {
+    const other = { ...machine, uuid: 'machine-2', location: 'B' as const };
+    repository.getMachines.mockResolvedValue([machine, other]);
+    await service.onModuleInit();
+    const confirmed = service.get(machine);
+
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['B', new Set<string>()]]),
+    );
+    await jest.advanceTimersByTimeAsync(90_000);
+    expect(service.get(machine)).toEqual(confirmed);
+    expect(service.get(other).isOnline).toBe(false);
+    expect(notification.notifyMachineOffline).toHaveBeenCalledTimes(1);
+    expect(notification.notifyMachineOffline).toHaveBeenCalledWith(other);
+  });
+
+  it('does not reset an existing grace period when a site query fails', async () => {
+    await service.onModuleInit();
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
+    await jest.advanceTimersByTimeAsync(30_000);
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(service.get(machine).isOnline).toBe(true);
+    expect(notification.notifyMachineOffline).not.toHaveBeenCalled();
+
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(service.get(machine).isOnline).toBe(false);
+    expect(notification.notifyMachineOffline).toHaveBeenCalledTimes(1);
   });
 
   it('excludes uncommissioned and soft-deleted devices', async () => {
@@ -142,7 +228,9 @@ describe('Machine connectivity', () => {
 
   it('drops a deleted device from monitoring during an outage', async () => {
     await service.onModuleInit();
-    matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
     await jest.advanceTimersByTimeAsync(60_000);
     repository.getMachines.mockResolvedValue([]);
     await jest.advanceTimersByTimeAsync(60_000);
@@ -151,7 +239,9 @@ describe('Machine connectivity', () => {
   });
 
   it('does not alert if deletion happens between the list query and transition', async () => {
-    matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
     await service.onModuleInit();
     repository.getMachine.mockResolvedValue(null);
     await jest.advanceTimersByTimeAsync(60_000);
@@ -160,7 +250,9 @@ describe('Machine connectivity', () => {
   });
 
   it('keeps detecting recovery after a notification failure', async () => {
-    matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
     notification.notifyMachineOffline.mockRejectedValue(
       new Error('push unavailable'),
     );
@@ -176,7 +268,9 @@ describe('Machine connectivity', () => {
 
   it('retries a transition after the active-machine recheck fails', async () => {
     await service.onModuleInit();
-    matter.getAvailableMacAddressesBySite.mockResolvedValue(new Map());
+    matter.getAvailableMacAddressesBySite.mockResolvedValue(
+      new Map([['A', new Set<string>()]]),
+    );
     repository.getMachine.mockRejectedValueOnce(
       new Error('database unavailable'),
     );
