@@ -27,8 +27,14 @@
 
 ## Project setup
 
+Use Node.js 24.22.1 or a newer 24.x release and Bun 1.4.2. The pinned Node.js
+version is in `.node-version`; `fnm install` can install it.
+See [the CVE-2026-111497 response](docs/cve-2026-111497.md) for runtime and
+deployment details.
+
 ```bash
-$ npm install
+$ bun install --frozen-lockfile
+$ bun x prisma generate
 ```
 
 ## Compile and run the project

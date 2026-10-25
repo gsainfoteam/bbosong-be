@@ -21,9 +21,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.node-version'
+
       - name: Install bun
         uses: oven-sh/setup-bun@v2
         with:
+          bun-version: '1.4.2'
           registries: |
             https://registry.npmjs.org/
             @gsainfoteam:https://npm.pkg.github.com/|$GITHUB_TOKEN
