@@ -24,6 +24,7 @@ jobs:
       - name: Install bun
         uses: oven-sh/setup-bun@v2
         with:
+          bun-version-file: '.bun-version'
           registries: |
             https://registry.npmjs.org/
             @gsainfoteam:https://npm.pkg.github.com/|$GITHUB_TOKEN
@@ -48,6 +49,6 @@ jobs:
           nc -zv localhost 32345
 
       - name: Migrate Database
-        run: bunx prisma migrate deploy
+        run: bunx --bun prisma migrate deploy
         env:
           DATABASE_URL: ${{ secrets.STG_DATABASE_URL }}
