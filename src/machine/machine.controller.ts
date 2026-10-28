@@ -50,13 +50,23 @@ import { GetMachineUsageHistoryReqDto } from './dto/req/get-machine-usage-histor
 import { GetUsingMachineResDto } from './dto/res/get-using-machine-res.dto';
 import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto';
 import { SuccessResDto } from '../common/dto/res/success-res.dto';
+import { ThinqService } from '../thinq/thinq.service';
 
 @Controller('machine')
 export class MachineController {
   constructor(
     private readonly machineService: MachineService,
     private readonly machineConnectivityService: MachineConnectivityService,
+    private readonly thinqService: ThinqService,
   ) {}
+
+  @Get('/thinq/devices')
+  @ApiOperation({ summary: 'List ThinQ devices for dryer mapping' })
+  @ApiBearerAuth()
+  @UseGuards(AdminGuard)
+  getThinqDevices() {
+    return this.thinqService.getDevices();
+  }
 
   @Post('/links/backfill')
   @ApiOperation({

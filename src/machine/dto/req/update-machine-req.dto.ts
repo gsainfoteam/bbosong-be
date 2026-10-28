@@ -1,6 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsNotEmpty,
+} from 'class-validator';
 
 export class UpdateMachineReqDto {
   @ApiPropertyOptional({
@@ -40,4 +46,13 @@ export class UpdateMachineReqDto {
   @IsOptional()
   @IsString()
   matterPayload?: string;
+
+  @ApiPropertyOptional({
+    description: 'ThinQ device ID (dryers only); null removes the mapping',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  thinqDeviceId?: string | null;
 }

@@ -1,6 +1,14 @@
 import { Gender, Location, MachineType } from 'generated/prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  IsNotEmpty,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { IsGreaterThan } from 'src/common/decorator/is-greater-than.decorator';
 
@@ -50,6 +58,12 @@ export class CreateMachineReqDto {
   @IsString()
   @IsOptional()
   matterPayload?: string;
+
+  @ApiPropertyOptional({ description: 'ThinQ device ID (dryers only)' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  thinqDeviceId?: string;
 }
 
 export class CreateMultipleMachinesReqDto {

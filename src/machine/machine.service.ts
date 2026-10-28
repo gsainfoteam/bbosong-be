@@ -36,6 +36,7 @@ import {
 } from './dto/req/create-machine-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 import { ShlinkService } from './shlink.service';
+import type { ThinqDryerState } from '../thinq/thinq.service';
 
 const MACHINE_ON_POWER_THRESHOLD_WATTS = 10;
 const MACHINE_ON_DURATION_MS = 180_000;
@@ -49,6 +50,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   private unsubscribePowerListener?: () => Promise<void>;
   private readonly machineTypesByMacAddress = new Map<string, MachineType>();
   private readonly machineUuidsByMacAddress = new Map<string, string>();
+  private readonly thinqMacAddresses = new Set<string>();
   private readonly machineStatusesByMacAddress = new Map<
     string,
     MachineStatus
@@ -73,6 +75,9 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     const machines = await this.machineRepository.getMachines();
     for (const machine of machines) {
       if (machine.macAddress) {
+        if (machine.type === MachineType.DRYER && machine.thinqDeviceId) {
+          this.thinqMacAddresses.add(machine.macAddress);
+        }
         this.machineTypesByMacAddress.set(machine.macAddress, machine.type);
         this.machineUuidsByMacAddress.set(machine.macAddress, machine.uuid);
         this.machineStatusesByMacAddress.set(
@@ -112,10 +117,12 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     const powerWatts = power / MATTER_POWER_UNITS_PER_WATT;
     const isBelowThreshold = powerWatts < MACHINE_ON_POWER_THRESHOLD_WATTS;
     this.latestPowerWattsByMacAddress.set(macAddress, powerWatts);
-    if (isBelowThreshold) {
-      this.scheduleIdleAfterLowPower(macAddress);
-    } else {
-      this.clearPowerBelowThresholdTimer(macAddress);
+    if (!this.thinqMacAddresses.has(macAddress)) {
+      if (isBelowThreshold) {
+        this.scheduleIdleAfterLowPower(macAddress);
+      } else {
+        this.clearPowerBelowThresholdTimer(macAddress);
+      }
     }
 
     try {
@@ -123,6 +130,8 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         macAddress,
         powerWatts,
       );
+
+      if (this.thinqMacAddresses.has(macAddress)) return;
 
       if (isBelowThreshold) return;
 
@@ -189,7 +198,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     const update = previousUpdate
       .catch(() => undefined)
       .then(async () => {
-        if (!shouldUpdate()) return;
+        if (this.thinqMacAddresses.has(macAddress) || !shouldUpdate()) return;
 
         const previousStatus = this.machineStatusesByMacAddress.get(macAddress);
         if (previousStatus === status) return;
@@ -368,13 +377,73 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   }
 
   async updateMachine(uuid: string, updateMachineReqDto: UpdateMachineReqDto) {
-    await this.machineRepository.updateMachine(
+    const machine = await this.machineRepository.updateMachine(
       uuid,
       updateMachineReqDto.isAvailable,
       updateMachineReqDto.posX,
       updateMachineReqDto.posY,
       updateMachineReqDto.matterPayload,
+      updateMachineReqDto.thinqDeviceId,
     );
+    if (machine.macAddress) {
+      if (machine.type === MachineType.DRYER && machine.thinqDeviceId) {
+        this.thinqMacAddresses.add(machine.macAddress);
+        this.clearPowerBelowThresholdTimer(machine.macAddress);
+      } else {
+        this.thinqMacAddresses.delete(machine.macAddress);
+      }
+      this.machineStatusesByMacAddress.set(machine.macAddress, machine.status);
+    }
+  }
+
+  async updateThinqDryerState(
+    uuid: string,
+    deviceId: string,
+    state: ThinqDryerState,
+  ): Promise<void> {
+    const currentState =
+      typeof state.runState?.currentState === 'string'
+        ? state.runState.currentState
+        : null;
+    // Local lifecycle policy: paused/cooling/wrinkle-care cycles still occupy a dryer.
+    // Errors, reservations and unknown states do not imply completion.
+    const status =
+      currentState &&
+      ['RUNNING', 'DETECTING', 'COOLING', 'PAUSE', 'WRINKLE_CARE'].includes(
+        currentState,
+      )
+        ? MachineStatus.DRY
+        : currentState &&
+            ['END', 'POWER_OFF', 'SLEEP', 'INITIAL'].includes(currentState)
+          ? MachineStatus.IDLE
+          : null;
+    const hour = state.timer?.remainHour;
+    const minute = state.timer?.remainMinute;
+    const remainingMinutes =
+      typeof hour === 'number' &&
+      typeof minute === 'number' &&
+      Number.isInteger(hour) &&
+      Number.isInteger(minute) &&
+      hour >= 0 &&
+      minute >= 0 &&
+      minute < 60 &&
+      hour * 60 + minute <= 2_147_483_647
+        ? hour * 60 + minute
+        : null;
+    const count = await this.machineRepository.updateThinqDryerState(
+      uuid,
+      deviceId,
+      currentState,
+      remainingMinutes,
+      status,
+    );
+    if (!count || !status) return;
+    // These operations are idempotent and retried on the next successful poll.
+    if (status === MachineStatus.DRY) {
+      await this.startUsingMachine(uuid);
+    } else {
+      await this.finishUsingMachine(uuid);
+    }
   }
 
   async deleteMachine(uuid: string) {
@@ -586,6 +655,9 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       macAddress,
     );
     this.machineTypesByMacAddress.set(macAddress, machine.type);
+    if (machine.type === MachineType.DRYER && machine.thinqDeviceId) {
+      this.thinqMacAddresses.add(macAddress);
+    }
     this.machineUuidsByMacAddress.set(macAddress, machine.uuid);
     this.machineStatusesByMacAddress.set(macAddress, machine.status);
   }
