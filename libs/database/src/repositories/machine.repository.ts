@@ -73,6 +73,11 @@ export class MachineRepository {
   }
 
   async createMachine(data: CreateMachineReqDto): Promise<Machine> {
+    if (data.thinqDeviceId && data.type !== MachineType.DRYER) {
+      throw new BadRequestException(
+        'ThinQ mapping is only supported for dryers.',
+      );
+    }
     return this.databaseService.machine
       .create({
         data: {
@@ -214,6 +219,7 @@ export class MachineRepository {
     posX?: number,
     posY?: number,
     matterPayload?: string,
+    thinqDeviceId?: string | null,
   ) {
     const machine = await this.databaseService.machine.findUnique({
       where: { uuid, deletedAt: null },
@@ -222,13 +228,19 @@ export class MachineRepository {
       throw new NotFoundException('Machine not found.');
     }
 
+    if (thinqDeviceId && machine.type !== MachineType.DRYER) {
+      throw new BadRequestException(
+        'ThinQ mapping is only supported for dryers.',
+      );
+    }
+
     if (machine.matterPayload && (matterPayload || matterPayload === '')) {
       throw new BadRequestException(
         'Cannot change matter payload after it is set.',
       );
     }
 
-    await this.databaseService.machine
+    return await this.databaseService.machine
       .update({
         where: {
           uuid,
@@ -239,11 +251,23 @@ export class MachineRepository {
           isAvailable,
           posX,
           posY,
+          thinqDeviceId,
+          ...(thinqDeviceId !== undefined &&
+          thinqDeviceId !== machine.thinqDeviceId
+            ? {
+                thinqCurrentState: null,
+                thinqRemainingMinutes: null,
+                thinqUpdatedAt: null,
+              }
+            : {}),
           ...(matterPayload ? { matterPayload, isCommissioned: false } : {}),
         },
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          if (error.code === 'P2002') {
+            throw new ConflictException('ThinQ device is already mapped.');
+          }
           if (error.code === 'P2025') {
             throw new NotFoundException('Machine not found.');
           }
@@ -339,6 +363,25 @@ export class MachineRepository {
         this.logger.error(`updateMachineStatusByMacAddress error: ${error}`);
         throw new InternalServerErrorException('Database Error');
       });
+  }
+
+  async updateThinqDryerState(
+    uuid: string,
+    thinqDeviceId: string,
+    thinqCurrentState: string | null,
+    thinqRemainingMinutes: number | null,
+    status: MachineStatus | null,
+  ): Promise<number> {
+    const result = await this.databaseService.machine.updateMany({
+      where: { uuid, deletedAt: null, type: MachineType.DRYER, thinqDeviceId },
+      data: {
+        thinqCurrentState,
+        thinqRemainingMinutes,
+        thinqUpdatedAt: new Date(),
+        ...(status ? { status } : {}),
+      },
+    });
+    return result.count;
   }
 
   async getMachinePowerFrom(

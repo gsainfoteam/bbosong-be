@@ -120,20 +120,24 @@ model AuditLog {
 }
 
 model Machine {
-  uuid           String        @id @default(uuid()) @db.Uuid
-  type           MachineType   @map("type")
-  location       Location      @map("location")
-  gender         Gender        @map("gender")
-  index          Int           @map("index")
-  isAvailable    Boolean       @default(true) @map("is_available")
-  posX           Int?          @map("pos_x")
-  posY           Int?          @map("pos_y")
-  status         MachineStatus @default(IDLE) @map("status")
-  matterPayload  String?       @map("matter_payload")
-  macAddress     String?       @map("mac_address")
-  isCommissioned Boolean?      @map("is_commissioned")
-  shortUrl       String?       @map("short_url")
-  shortCode      String?       @unique @map("short_code")
+  uuid                  String        @id @default(uuid()) @db.Uuid
+  type                  MachineType   @map("type")
+  location              Location      @map("location")
+  gender                Gender        @map("gender")
+  index                 Int           @map("index")
+  isAvailable           Boolean       @default(true) @map("is_available")
+  posX                  Int?          @map("pos_x")
+  posY                  Int?          @map("pos_y")
+  status                MachineStatus @default(IDLE) @map("status")
+  matterPayload         String?       @map("matter_payload")
+  macAddress            String?       @map("mac_address")
+  isCommissioned        Boolean?      @map("is_commissioned")
+  shortUrl              String?       @map("short_url")
+  shortCode             String?       @unique @map("short_code")
+  thinqDeviceId         String?       @unique @map("thinq_device_id")
+  thinqCurrentState     String?       @map("thinq_current_state")
+  thinqRemainingMinutes Int?          @map("thinq_remaining_minutes")
+  thinqUpdatedAt        DateTime?     @map("thinq_updated_at")
 
   deletedAt DateTime? @map("deleted_at")
   createdAt DateTime  @default(now()) @map("created_at")

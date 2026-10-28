@@ -226,6 +226,26 @@ describe('Machine connectivity', () => {
     expect(repository.getMachine).not.toHaveBeenCalled();
   });
 
+  it.each([null, true])(
+    'excludes MAC-less ThinQ dryers from Matter connectivity (isCommissioned=%s)',
+    async (isCommissioned) => {
+      const dryer = {
+        ...machine,
+        type: 'DRYER' as const,
+        thinqDeviceId: 'device',
+        macAddress: null,
+        matterPayload: null,
+        isCommissioned,
+      };
+      repository.getMachines.mockResolvedValue([dryer]);
+      await service.onModuleInit();
+      await jest.advanceTimersByTimeAsync(120_000);
+      expect(service.get(dryer)).toEqual({ isOnline: null, lastSeenAt: null });
+      expect(notification.notifyMachineOffline).not.toHaveBeenCalled();
+      expect(repository.getMachine).not.toHaveBeenCalled();
+    },
+  );
+
   it('drops a deleted device from monitoring during an outage', async () => {
     await service.onModuleInit();
     matter.getAvailableMacAddressesBySite.mockResolvedValue(
