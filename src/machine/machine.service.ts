@@ -86,6 +86,9 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
+      // ThinQ dryers are identified by deviceId, without a Matter MAC or commission.
+      if (machine.type === MachineType.DRYER && machine.thinqDeviceId) continue;
+
       if (machine.isCommissioned) {
         if (!machine.macAddress) {
           throw new Error(
@@ -639,6 +642,11 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     if (!machine) {
       throw new NotFoundException('Machine not found.');
     }
+    if (machine.type === MachineType.DRYER && machine.thinqDeviceId) {
+      throw new BadRequestException(
+        'ThinQ dryers do not require Matter commissioning.',
+      );
+    }
     if (!machine.matterPayload) {
       throw new BadRequestException('Machine matter payload is not set.');
     }
@@ -655,9 +663,6 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       macAddress,
     );
     this.machineTypesByMacAddress.set(macAddress, machine.type);
-    if (machine.type === MachineType.DRYER && machine.thinqDeviceId) {
-      this.thinqMacAddresses.add(macAddress);
-    }
     this.machineUuidsByMacAddress.set(macAddress, machine.uuid);
     this.machineStatusesByMacAddress.set(macAddress, machine.status);
   }

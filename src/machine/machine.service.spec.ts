@@ -402,6 +402,76 @@ describe('MachineService access and registration', () => {
       machineRepository.updateThinqDryerState.mockResolvedValue(1);
     });
 
+    it.each([null, false, true])(
+      'initializes and tracks a deviceId-only dryer without a MAC (isCommissioned=%s)',
+      async (isCommissioned) => {
+        const dryer = {
+          ...machine,
+          type: MachineType.DRYER,
+          status: MachineStatus.IDLE,
+          thinqDeviceId: 'device',
+          macAddress: null,
+          matterPayload: null,
+          isCommissioned,
+        };
+        machineRepository.getMachines.mockResolvedValue([dryer]);
+        service = new MachineService(
+          machineRepository as never,
+          usingMachineRepository as never,
+          notificationService as never,
+          { addPowerListener: jest.fn() } as never,
+          {} as never,
+          {} as never,
+        );
+        await expect(service.onModuleInit()).resolves.toBeUndefined();
+        await service.updateThinqDryerState(machineUuid, 'device', {
+          runState: { currentState: 'RUNNING' },
+          timer: { remainHour: 0, remainMinute: 20 },
+        });
+        await service.updateThinqDryerState(machineUuid, 'device', {
+          runState: { currentState: 'END' },
+        });
+        expect(usingMachineRepository.createUsingMachine).toHaveBeenCalledWith(
+          machineUuid,
+          undefined,
+          true,
+        );
+        expect(usingMachineRepository.finishUsingMachine).toHaveBeenCalledWith(
+          machineUuid,
+        );
+        expect(
+          machineRepository.recordMachinePowerByMacAddress,
+        ).not.toHaveBeenCalled();
+        expect(
+          machineRepository.updateMachineStatusByMacAddress,
+        ).not.toHaveBeenCalled();
+        await service.onModuleDestroy();
+      },
+    );
+
+    it('keeps the MAC requirement for commissioned Matter washers', async () => {
+      machineRepository.getMachines.mockResolvedValue([
+        { ...machine, macAddress: null, isCommissioned: true },
+      ]);
+      await expect(service.onModuleInit()).rejects.toThrow(
+        'mac address is not set',
+      );
+    });
+
+    it('rejects Matter commissioning for a ThinQ dryer', async () => {
+      machineRepository.getMachine.mockResolvedValue({
+        ...machine,
+        type: MachineType.DRYER,
+        thinqDeviceId: 'device',
+        macAddress: null,
+        matterPayload: null,
+        isCommissioned: null,
+      });
+      await expect(service.commissionMachine(machineUuid)).rejects.toThrow(
+        'ThinQ dryers do not require Matter commissioning.',
+      );
+    });
+
     it.each(['RUNNING', 'DETECTING', 'COOLING', 'PAUSE', 'WRINKLE_CARE'])(
       'treats %s as occupied and records remaining time',
       async (currentState) => {

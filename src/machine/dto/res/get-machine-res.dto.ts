@@ -85,7 +85,7 @@ export class GetMachineResDto {
 
   @ApiProperty({
     description:
-      'Matter connectivity: true online, false offline after 60 seconds unavailable, null uncommissioned or pending first check',
+      'Matter connectivity: true online, false offline after 60 seconds unavailable, null for ThinQ devices, uncommissioned devices or pending first check',
     type: Boolean,
     nullable: true,
   })

@@ -10,7 +10,14 @@ jest.mock('generated/prisma/client', () =>
 );
 
 describe('ThinQ polling', () => {
-  const dryer = { uuid: 'dryer', type: 'DRYER', thinqDeviceId: 'device-1' };
+  const dryer = {
+    uuid: 'dryer',
+    type: 'DRYER',
+    thinqDeviceId: 'device-1',
+    macAddress: null,
+    matterPayload: null,
+    isCommissioned: null,
+  };
   const thinq = {
     enabled: true,
     pollIntervalMs: 60_000,
