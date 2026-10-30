@@ -134,7 +134,7 @@ model Machine {
   isCommissioned        Boolean?      @map("is_commissioned")
   shortUrl              String?       @map("short_url")
   shortCode             String?       @unique @map("short_code")
-  thinqDeviceId         String?       @unique @map("thinq_device_id")
+  thinqDeviceId         String?       @map("thinq_device_id")
   thinqCurrentState     String?       @map("thinq_current_state")
   thinqRemainingMinutes Int?          @map("thinq_remaining_minutes")
   thinqUpdatedAt        DateTime?     @map("thinq_updated_at")
@@ -146,7 +146,7 @@ model Machine {
   usages UsingMachine[]
   power  MachinePower[]
 
-  // The migration enforces unique MAC addresses and room slots for active machines only.
+  // The migrations enforce unique MAC addresses, ThinQ device IDs and room slots for active machines only.
   @@index([location, gender])
   @@map("machine")
 }

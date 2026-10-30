@@ -596,6 +596,66 @@ describe('Machine usage history (PostgreSQL)', () => {
       for (const item of batch) await machines.deleteMachine(item.uuid);
     });
 
+    it('reuses deleted ThinQ mappings while rejecting active duplicates', async () => {
+      const deviceId = randomUUID();
+      await machines.updateMachine(
+        machine.uuid,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        deviceId,
+      );
+      const other = await machines.createMachine({ ...room, index: 2 });
+      const createdUuids = [other.uuid];
+      try {
+        await expect(
+          machines.createMachine({
+            ...room,
+            index: 3,
+            thinqDeviceId: deviceId,
+          }),
+        ).rejects.toThrow('Machine already exists.');
+        await machines.deleteMachine(machine.uuid);
+        const replacement = await machines.createMachine({
+          ...room,
+          index: 1,
+          thinqDeviceId: deviceId,
+        });
+        createdUuids.push(replacement.uuid);
+        expect(
+          await prisma.machine.findUnique({ where: { uuid: machine.uuid } }),
+        ).toMatchObject({ thinqDeviceId: deviceId });
+        await expect(
+          machines.updateMachine(
+            other.uuid,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            deviceId,
+          ),
+        ).rejects.toThrow('ThinQ device is already mapped.');
+        await machines.deleteMachine(replacement.uuid);
+        await machines.updateMachine(
+          other.uuid,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          deviceId,
+        );
+        expect(await machines.getMachine(other.uuid)).toMatchObject({
+          thinqDeviceId: deviceId,
+        });
+      } finally {
+        for (const uuid of createdUuids) {
+          if (await machines.getMachine(uuid))
+            await machines.deleteMachine(uuid);
+        }
+      }
+    });
+
     it('serializes deletion with session creation without losing records', async () => {
       const results = await Promise.allSettled([
         usages.createUsingMachine(machine.uuid, userUuid),

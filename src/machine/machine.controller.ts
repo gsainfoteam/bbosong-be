@@ -62,7 +62,7 @@ export class MachineController {
 
   @Get('/thinq/devices')
   @ApiOperation({ summary: 'List ThinQ devices for dryer mapping' })
-  @ApiBearerAuth()
+  @ApiBearerAuth('user')
   @UseGuards(AdminGuard)
   getThinqDevices() {
     return this.thinqService.getDevices();
