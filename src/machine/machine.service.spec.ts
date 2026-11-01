@@ -63,6 +63,7 @@ describe('MachineService access and registration', () => {
     getMachineWithUsage: jest.fn(),
     getMachineWithUsageByShortCode: jest.fn(),
     getMachines: jest.fn(),
+    getMachineTypeByMacAddress: jest.fn(),
     updateMachine: jest.fn(),
     updateThinqDryerState: jest.fn(),
     recordMachinePowerByMacAddress: jest.fn(),
@@ -596,6 +597,9 @@ describe('MachineService access and registration', () => {
     beforeEach(async () => {
       jest.useFakeTimers();
       machineRepository.getMachines.mockResolvedValue([washer]);
+      machineRepository.getMachineTypeByMacAddress = jest
+        .fn()
+        .mockResolvedValue(MachineType.WASHER);
       service = new MachineService(
         machineRepository as never,
         usingMachineRepository as never,
@@ -642,6 +646,69 @@ describe('MachineService access and registration', () => {
       await powerListener('washer-mac', 20_000);
       await jest.advanceTimersByTimeAsync(180_000);
       expect(usingMachineRepository.finishUsingMachine).not.toHaveBeenCalled();
+    });
+
+    it('forgets Matter power tracking when a dryer is mapped to ThinQ', async () => {
+      const dryer = {
+        ...machine,
+        uuid: 'dryer',
+        type: MachineType.DRYER,
+        macAddress: 'dryer-mac',
+        status: MachineStatus.DRY,
+        thinqDeviceId: null,
+      };
+      machineRepository.getMachines.mockResolvedValue([dryer, washer]);
+      await service.onModuleInit();
+      machineRepository.getMachine.mockResolvedValue(dryer);
+      machineRepository.updateMachine.mockResolvedValue({
+        ...dryer,
+        thinqDeviceId: 'device',
+        macAddress: null,
+        isCommissioned: false,
+      });
+
+      await powerListener('dryer-mac', 1000);
+      await service.updateMachine('dryer', { thinqDeviceId: 'device' });
+      machineRepository.recordMachinePowerByMacAddress.mockRejectedValue(
+        new NotFoundException('Machine not found.'),
+      );
+      await powerListener('dryer-mac', 0);
+      await jest.advanceTimersByTimeAsync(180_000);
+
+      expect(usingMachineRepository.finishUsingMachine).not.toHaveBeenCalled();
+      expect(
+        machineRepository.updateMachineStatusByMacAddress,
+      ).not.toHaveBeenCalledWith('dryer-mac', expect.anything());
+    });
+
+    it('closes an active ThinQ session when the mapping is removed', async () => {
+      const dryer = {
+        ...machine,
+        uuid: 'dryer',
+        type: MachineType.DRYER,
+        macAddress: null,
+        status: MachineStatus.DRY,
+        thinqDeviceId: 'device',
+      };
+      machineRepository.getMachine.mockResolvedValue(dryer);
+      machineRepository.updateMachine.mockResolvedValue({
+        ...dryer,
+        thinqDeviceId: null,
+        status: MachineStatus.IDLE,
+      });
+      usingMachineRepository.finishUsingMachine.mockResolvedValue({
+        uuid: 'usage',
+        machineUuid: 'dryer',
+        userUuid,
+        notifyOnCompletion: true,
+      });
+
+      await service.updateMachine('dryer', { thinqDeviceId: null });
+
+      expect(usingMachineRepository.finishUsingMachine).toHaveBeenCalledWith(
+        'dryer',
+      );
+      expect(notificationService.notifyMachineCompletion).toHaveBeenCalled();
     });
   });
 });

@@ -116,11 +116,6 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     const powerWatts = power / MATTER_POWER_UNITS_PER_WATT;
     const isBelowThreshold = powerWatts < MACHINE_ON_POWER_THRESHOLD_WATTS;
     this.latestPowerWattsByMacAddress.set(macAddress, powerWatts);
-    if (isBelowThreshold) {
-      this.scheduleIdleAfterLowPower(macAddress);
-    } else {
-      this.clearPowerBelowThresholdTimer(macAddress);
-    }
 
     try {
       await this.machineRepository.recordMachinePowerByMacAddress(
@@ -128,7 +123,14 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         powerWatts,
       );
 
-      if (isBelowThreshold) return;
+      // Only Matter-tracked MACs may schedule power-driven idle timers.
+      if (!this.machineUuidsByMacAddress.has(macAddress)) return;
+
+      if (isBelowThreshold) {
+        this.scheduleIdleAfterLowPower(macAddress);
+        return;
+      }
+      this.clearPowerBelowThresholdTimer(macAddress);
 
       const machineType =
         this.machineTypesByMacAddress.get(macAddress) ??
@@ -183,6 +185,14 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     this.powerBelowThresholdTimers.delete(macAddress);
   }
 
+  private forgetMacAddress(macAddress: string): void {
+    this.clearPowerBelowThresholdTimer(macAddress);
+    this.machineTypesByMacAddress.delete(macAddress);
+    this.machineUuidsByMacAddress.delete(macAddress);
+    this.machineStatusesByMacAddress.delete(macAddress);
+    this.latestPowerWattsByMacAddress.delete(macAddress);
+  }
+
   private enqueueMachineStatusUpdate(
     macAddress: string,
     status: MachineStatus,
@@ -193,7 +203,9 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     const update = previousUpdate
       .catch(() => undefined)
       .then(async () => {
-        if (!shouldUpdate()) return;
+        if (!this.machineUuidsByMacAddress.has(macAddress) || !shouldUpdate()) {
+          return;
+        }
 
         const previousStatus = this.machineStatusesByMacAddress.get(macAddress);
         if (previousStatus === status) return;
@@ -204,7 +216,8 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         );
 
         const machineUuid = this.machineUuidsByMacAddress.get(macAddress);
-        if (!machineUuid || previousStatus === undefined) {
+        if (!machineUuid) return;
+        if (previousStatus === undefined) {
           this.machineStatusesByMacAddress.set(macAddress, status);
           return;
         }
@@ -222,6 +235,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
+        if (!this.machineUuidsByMacAddress.has(macAddress)) return;
         this.machineStatusesByMacAddress.set(macAddress, status);
       });
 
@@ -372,6 +386,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   }
 
   async updateMachine(uuid: string, updateMachineReqDto: UpdateMachineReqDto) {
+    const previous = await this.machineRepository.getMachine(uuid);
     const machine = await this.machineRepository.updateMachine(
       uuid,
       updateMachineReqDto.isAvailable,
@@ -380,6 +395,18 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       updateMachineReqDto.matterPayload,
       updateMachineReqDto.thinqDeviceId,
     );
+
+    if (
+      typeof updateMachineReqDto.thinqDeviceId === 'string' &&
+      previous?.macAddress
+    ) {
+      this.forgetMacAddress(previous.macAddress);
+    }
+
+    if (updateMachineReqDto.thinqDeviceId === null && previous?.thinqDeviceId) {
+      await this.finishUsingMachine(uuid);
+    }
+
     if (machine.macAddress) {
       this.machineStatusesByMacAddress.set(machine.macAddress, machine.status);
     }

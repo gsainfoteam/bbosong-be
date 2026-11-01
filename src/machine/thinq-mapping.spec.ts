@@ -75,7 +75,7 @@ describe('ThinQ machine mapping repository', () => {
     },
   );
 
-  it('clears the Matter MAC when mapping a ThinQ device', async () => {
+  it('clears the Matter MAC and commission flag when mapping a ThinQ device', async () => {
     await repository.updateMachine(
       'dryer',
       undefined,
@@ -90,6 +90,7 @@ describe('ThinQ machine mapping repository', () => {
     expect(calls[0][0].data).toMatchObject({
       thinqDeviceId: 'device',
       macAddress: null,
+      isCommissioned: false,
     });
   });
 
@@ -106,6 +107,25 @@ describe('ThinQ machine mapping repository', () => {
       { data: Record<string, unknown> },
     ][];
     expect(calls[0][0].data).not.toHaveProperty('macAddress');
+    expect(calls[0][0].data).not.toHaveProperty('isCommissioned');
+  });
+
+  it('marks the dryer idle when ThinQ is unmapped', async () => {
+    await repository.updateMachine(
+      'dryer',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      null,
+    );
+    const calls = model.update.mock.calls as [
+      { data: Record<string, unknown> },
+    ][];
+    expect(calls[0][0].data).toMatchObject({
+      thinqDeviceId: null,
+      status: MachineStatus.IDLE,
+    });
   });
 
   it('reports duplicate device mappings as a conflict', async () => {
