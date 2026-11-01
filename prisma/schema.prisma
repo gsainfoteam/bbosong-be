@@ -147,6 +147,7 @@ model Machine {
   power  MachinePower[]
 
   // The migrations enforce unique MAC addresses, ThinQ device IDs and room slots for active machines only.
+  // ThinQ-mapped machines cannot also have a Matter MAC (machine_thinq_device_without_mac).
   @@index([location, gender])
   @@map("machine")
 }

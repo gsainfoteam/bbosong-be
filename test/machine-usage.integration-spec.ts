@@ -656,6 +656,42 @@ describe('Machine usage history (PostgreSQL)', () => {
       }
     });
 
+    it('clears and forbids a Matter MAC on ThinQ-mapped dryers', async () => {
+      const deviceId = randomUUID();
+      const dryer = await machines.createMachine({
+        ...room,
+        type: MachineType.DRYER,
+        index: 10,
+      });
+      try {
+        await prisma.machine.update({
+          where: { uuid: dryer.uuid },
+          data: { macAddress: 'aa:bb:cc:dd:ee:ff' },
+        });
+        await machines.updateMachine(
+          dryer.uuid,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          deviceId,
+        );
+        expect(await machines.getMachine(dryer.uuid)).toMatchObject({
+          macAddress: null,
+          thinqDeviceId: deviceId,
+        });
+        await expect(
+          prisma.machine.update({
+            where: { uuid: dryer.uuid },
+            data: { macAddress: '11:22:33:44:55:66' },
+          }),
+        ).rejects.toThrow(/machine_thinq_device_without_mac|P2004|check/i);
+      } finally {
+        if (await machines.getMachine(dryer.uuid))
+          await machines.deleteMachine(dryer.uuid);
+      }
+    });
+
     it('serializes deletion with session creation without losing records', async () => {
       const results = await Promise.allSettled([
         usages.createUsingMachine(machine.uuid, userUuid),

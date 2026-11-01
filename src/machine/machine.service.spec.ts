@@ -587,14 +587,6 @@ describe('MachineService access and registration', () => {
   });
 
   describe('Power status source selection', () => {
-    const dryer = {
-      ...machine,
-      uuid: 'dryer',
-      macAddress: 'dryer-mac',
-      type: MachineType.DRYER,
-      status: MachineStatus.IDLE,
-      thinqDeviceId: 'device',
-    };
     const washer = {
       ...machine,
       macAddress: 'washer-mac',
@@ -603,7 +595,7 @@ describe('MachineService access and registration', () => {
     let powerListener: (mac: string, power: number) => Promise<void>;
     beforeEach(async () => {
       jest.useFakeTimers();
-      machineRepository.getMachines.mockResolvedValue([dryer, washer]);
+      machineRepository.getMachines.mockResolvedValue([washer]);
       service = new MachineService(
         machineRepository as never,
         usingMachineRepository as never,
@@ -648,37 +640,6 @@ describe('MachineService access and registration', () => {
       await powerListener('washer-mac', 1000);
       await jest.advanceTimersByTimeAsync(120_000);
       await powerListener('washer-mac', 20_000);
-      await jest.advanceTimersByTimeAsync(180_000);
-      expect(usingMachineRepository.finishUsingMachine).not.toHaveBeenCalled();
-    });
-
-    it('records mapped dryer power without starting a power-driven session or completion timer', async () => {
-      await powerListener('dryer-mac', 50_000);
-      await powerListener('dryer-mac', 0);
-      await jest.advanceTimersByTimeAsync(180_000);
-      expect(
-        machineRepository.recordMachinePowerByMacAddress,
-      ).toHaveBeenCalledTimes(2);
-      expect(
-        machineRepository.updateMachineStatusByMacAddress,
-      ).not.toHaveBeenCalled();
-      expect(usingMachineRepository.createUsingMachine).not.toHaveBeenCalled();
-      expect(usingMachineRepository.finishUsingMachine).not.toHaveBeenCalled();
-    });
-
-    it('cancels an existing power timer when a dryer is mapped and restores power tracking when unmapped', async () => {
-      machineRepository.updateMachine.mockResolvedValue({
-        ...dryer,
-        thinqDeviceId: null,
-      });
-      await service.updateMachine('dryer', { thinqDeviceId: null });
-      await powerListener('dryer-mac', 50_000);
-      await powerListener('dryer-mac', 0);
-      machineRepository.updateMachine.mockResolvedValue({
-        ...dryer,
-        status: MachineStatus.DRY,
-      });
-      await service.updateMachine('dryer', { thinqDeviceId: 'device' });
       await jest.advanceTimersByTimeAsync(180_000);
       expect(usingMachineRepository.finishUsingMachine).not.toHaveBeenCalled();
     });

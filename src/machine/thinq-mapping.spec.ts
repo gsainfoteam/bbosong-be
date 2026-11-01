@@ -75,6 +75,39 @@ describe('ThinQ machine mapping repository', () => {
     },
   );
 
+  it('clears the Matter MAC when mapping a ThinQ device', async () => {
+    await repository.updateMachine(
+      'dryer',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'device',
+    );
+    const calls = model.update.mock.calls as [
+      { data: Record<string, unknown> },
+    ][];
+    expect(calls[0][0].data).toMatchObject({
+      thinqDeviceId: 'device',
+      macAddress: null,
+    });
+  });
+
+  it('does not clear the Matter MAC when only unmapping ThinQ', async () => {
+    await repository.updateMachine(
+      'dryer',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      null,
+    );
+    const calls = model.update.mock.calls as [
+      { data: Record<string, unknown> },
+    ][];
+    expect(calls[0][0].data).not.toHaveProperty('macAddress');
+  });
+
   it('reports duplicate device mappings as a conflict', async () => {
     model.update.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError('Unique constraint', {

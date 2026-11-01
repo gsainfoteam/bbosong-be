@@ -50,7 +50,6 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   private unsubscribePowerListener?: () => Promise<void>;
   private readonly machineTypesByMacAddress = new Map<string, MachineType>();
   private readonly machineUuidsByMacAddress = new Map<string, string>();
-  private readonly thinqMacAddresses = new Set<string>();
   private readonly machineStatusesByMacAddress = new Map<
     string,
     MachineStatus
@@ -75,9 +74,6 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     const machines = await this.machineRepository.getMachines();
     for (const machine of machines) {
       if (machine.macAddress) {
-        if (machine.type === MachineType.DRYER && machine.thinqDeviceId) {
-          this.thinqMacAddresses.add(machine.macAddress);
-        }
         this.machineTypesByMacAddress.set(machine.macAddress, machine.type);
         this.machineUuidsByMacAddress.set(machine.macAddress, machine.uuid);
         this.machineStatusesByMacAddress.set(
@@ -120,12 +116,10 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     const powerWatts = power / MATTER_POWER_UNITS_PER_WATT;
     const isBelowThreshold = powerWatts < MACHINE_ON_POWER_THRESHOLD_WATTS;
     this.latestPowerWattsByMacAddress.set(macAddress, powerWatts);
-    if (!this.thinqMacAddresses.has(macAddress)) {
-      if (isBelowThreshold) {
-        this.scheduleIdleAfterLowPower(macAddress);
-      } else {
-        this.clearPowerBelowThresholdTimer(macAddress);
-      }
+    if (isBelowThreshold) {
+      this.scheduleIdleAfterLowPower(macAddress);
+    } else {
+      this.clearPowerBelowThresholdTimer(macAddress);
     }
 
     try {
@@ -133,8 +127,6 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         macAddress,
         powerWatts,
       );
-
-      if (this.thinqMacAddresses.has(macAddress)) return;
 
       if (isBelowThreshold) return;
 
@@ -201,7 +193,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     const update = previousUpdate
       .catch(() => undefined)
       .then(async () => {
-        if (this.thinqMacAddresses.has(macAddress) || !shouldUpdate()) return;
+        if (!shouldUpdate()) return;
 
         const previousStatus = this.machineStatusesByMacAddress.get(macAddress);
         if (previousStatus === status) return;
@@ -389,12 +381,6 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       updateMachineReqDto.thinqDeviceId,
     );
     if (machine.macAddress) {
-      if (machine.type === MachineType.DRYER && machine.thinqDeviceId) {
-        this.thinqMacAddresses.add(machine.macAddress);
-        this.clearPowerBelowThresholdTimer(machine.macAddress);
-      } else {
-        this.thinqMacAddresses.delete(machine.macAddress);
-      }
       this.machineStatusesByMacAddress.set(machine.macAddress, machine.status);
     }
   }

@@ -30,11 +30,20 @@ export class MachineUsageInfoDto {
   })
   startedAt: Date;
 
-  constructor(usage: UsingMachine) {
+  @ApiProperty({
+    description:
+      'Remaining minutes from the machine ThinQ timer, when available',
+    example: 20,
+    nullable: true,
+  })
+  remainingMinutes: number | null;
+
+  constructor(usage: UsingMachine, remainingMinutes: number | null) {
     this.uuid = usage.uuid;
     this.userUuid = usage.userUuid;
     this.notifyOnCompletion = usage.notifyOnCompletion;
     this.startedAt = usage.startedAt;
+    this.remainingMinutes = remainingMinutes;
   }
 }
 
@@ -49,7 +58,10 @@ export class GetMachineDetailResDto extends GetMachineResDto {
   constructor(machine: MachineWithUsage, connectivity: MachineConnectivity) {
     super(machine, connectivity);
     this.currentUsage = machine.currentUsage
-      ? new MachineUsageInfoDto(machine.currentUsage)
+      ? new MachineUsageInfoDto(
+          machine.currentUsage,
+          machine.thinqRemainingMinutes,
+        )
       : null;
   }
 }

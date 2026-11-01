@@ -252,6 +252,7 @@ export class MachineRepository {
           posX,
           posY,
           thinqDeviceId,
+          ...(typeof thinqDeviceId === 'string' ? { macAddress: null } : {}),
           ...(thinqDeviceId !== undefined &&
           thinqDeviceId !== machine.thinqDeviceId
             ? {
