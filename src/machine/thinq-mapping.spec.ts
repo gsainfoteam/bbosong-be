@@ -110,23 +110,26 @@ describe('ThinQ machine mapping repository', () => {
     expect(calls[0][0].data).not.toHaveProperty('isCommissioned');
   });
 
-  it('marks the dryer idle when ThinQ is unmapped', async () => {
-    await repository.updateMachine(
-      'dryer',
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      null,
-    );
-    const calls = model.update.mock.calls as [
-      { data: Record<string, unknown> },
-    ][];
-    expect(calls[0][0].data).toMatchObject({
-      thinqDeviceId: null,
-      status: MachineStatus.IDLE,
-    });
-  });
+  it.each([null, 'other-device'])(
+    'marks the dryer idle when ThinQ mapping changes to %s',
+    async (deviceId) => {
+      await repository.updateMachine(
+        'dryer',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        deviceId,
+      );
+      const calls = model.update.mock.calls as [
+        { data: Record<string, unknown> },
+      ][];
+      expect(calls[0][0].data).toMatchObject({
+        thinqDeviceId: deviceId,
+        status: MachineStatus.IDLE,
+      });
+    },
+  );
 
   it('reports duplicate device mappings as a conflict', async () => {
     model.update.mockRejectedValue(

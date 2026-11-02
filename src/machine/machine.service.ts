@@ -387,6 +387,16 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
 
   async updateMachine(uuid: string, updateMachineReqDto: UpdateMachineReqDto) {
     const previous = await this.machineRepository.getMachine(uuid);
+    const thinqMappingChanged =
+      updateMachineReqDto.thinqDeviceId !== undefined &&
+      !!previous?.thinqDeviceId &&
+      updateMachineReqDto.thinqDeviceId !== previous.thinqDeviceId;
+
+    // Finish first so a failed session close can be retried before the mapping is cleared.
+    if (thinqMappingChanged) {
+      await this.finishUsingMachine(uuid);
+    }
+
     const machine = await this.machineRepository.updateMachine(
       uuid,
       updateMachineReqDto.isAvailable,
@@ -401,10 +411,6 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       previous?.macAddress
     ) {
       this.forgetMacAddress(previous.macAddress);
-    }
-
-    if (updateMachineReqDto.thinqDeviceId === null && previous?.thinqDeviceId) {
-      await this.finishUsingMachine(uuid);
     }
 
     if (machine.macAddress) {
@@ -456,6 +462,9 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     if (!count || !status) return;
     // These operations are idempotent and retried on the next successful poll.
     if (status === MachineStatus.DRY) {
+      // Re-check after the snapshot write so an admin unmap cannot reopen usage.
+      const machine = await this.machineRepository.getMachine(uuid);
+      if (!machine?.thinqDeviceId || machine.thinqDeviceId !== deviceId) return;
       await this.startUsingMachine(uuid);
     } else {
       await this.finishUsingMachine(uuid);

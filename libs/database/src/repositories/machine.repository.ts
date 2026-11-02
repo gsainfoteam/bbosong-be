@@ -255,12 +255,11 @@ export class MachineRepository {
           ...(typeof thinqDeviceId === 'string'
             ? { macAddress: null, isCommissioned: false }
             : {}),
-          ...(thinqDeviceId === null && machine.thinqDeviceId
-            ? { status: MachineStatus.IDLE }
-            : {}),
           ...(thinqDeviceId !== undefined &&
-          thinqDeviceId !== machine.thinqDeviceId
+          thinqDeviceId !== machine.thinqDeviceId &&
+          machine.thinqDeviceId
             ? {
+                status: MachineStatus.IDLE,
                 thinqCurrentState: null,
                 thinqRemainingMinutes: null,
                 thinqUpdatedAt: null,

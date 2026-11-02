@@ -401,6 +401,12 @@ describe('MachineService access and registration', () => {
   describe('ThinQ dryer lifecycle', () => {
     beforeEach(() => {
       machineRepository.updateThinqDryerState.mockResolvedValue(1);
+      machineRepository.getMachine.mockResolvedValue({
+        ...machine,
+        type: MachineType.DRYER,
+        thinqDeviceId: 'device',
+        macAddress: null,
+      });
     });
 
     it.each([null, false, true])(
@@ -681,34 +687,61 @@ describe('MachineService access and registration', () => {
       ).not.toHaveBeenCalledWith('dryer-mac', expect.anything());
     });
 
-    it('closes an active ThinQ session when the mapping is removed', async () => {
-      const dryer = {
+    it.each([null, 'other-device'])(
+      'closes an active ThinQ session before mapping changes to %s',
+      async (deviceId) => {
+        const dryer = {
+          ...machine,
+          uuid: 'dryer',
+          type: MachineType.DRYER,
+          macAddress: null,
+          status: MachineStatus.DRY,
+          thinqDeviceId: 'device',
+        };
+        const callOrder: string[] = [];
+        machineRepository.getMachine.mockResolvedValue(dryer);
+        machineRepository.updateMachine.mockImplementation(() => {
+          callOrder.push('update');
+          return Promise.resolve({
+            ...dryer,
+            thinqDeviceId: deviceId,
+            status: MachineStatus.IDLE,
+          });
+        });
+        usingMachineRepository.finishUsingMachine.mockImplementation(() => {
+          callOrder.push('finish');
+          return Promise.resolve({
+            uuid: 'usage',
+            machineUuid: 'dryer',
+            userUuid,
+            notifyOnCompletion: true,
+          });
+        });
+
+        await service.updateMachine('dryer', { thinqDeviceId: deviceId });
+
+        expect(callOrder).toEqual(['finish', 'update']);
+        expect(usingMachineRepository.finishUsingMachine).toHaveBeenCalledWith(
+          'dryer',
+        );
+        expect(notificationService.notifyMachineCompletion).toHaveBeenCalled();
+      },
+    );
+
+    it('does not start a ThinQ usage after the mapping disappears mid-poll', async () => {
+      machineRepository.updateThinqDryerState.mockResolvedValue(1);
+      machineRepository.getMachine.mockResolvedValue({
         ...machine,
         uuid: 'dryer',
         type: MachineType.DRYER,
-        macAddress: null,
-        status: MachineStatus.DRY,
-        thinqDeviceId: 'device',
-      };
-      machineRepository.getMachine.mockResolvedValue(dryer);
-      machineRepository.updateMachine.mockResolvedValue({
-        ...dryer,
         thinqDeviceId: null,
-        status: MachineStatus.IDLE,
-      });
-      usingMachineRepository.finishUsingMachine.mockResolvedValue({
-        uuid: 'usage',
-        machineUuid: 'dryer',
-        userUuid,
-        notifyOnCompletion: true,
       });
 
-      await service.updateMachine('dryer', { thinqDeviceId: null });
+      await service.updateThinqDryerState('dryer', 'device', {
+        runState: { currentState: 'RUNNING' },
+      });
 
-      expect(usingMachineRepository.finishUsingMachine).toHaveBeenCalledWith(
-        'dryer',
-      );
-      expect(notificationService.notifyMachineCompletion).toHaveBeenCalled();
+      expect(usingMachineRepository.createUsingMachine).not.toHaveBeenCalled();
     });
   });
 });
