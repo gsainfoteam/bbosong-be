@@ -82,6 +82,7 @@ describe('ThinQ Connect HTTP client', () => {
         'x-country': 'KR',
         'x-client-id': 'test-client',
         'x-api-key': 'test-api-key',
+        'x-service-phase': 'OP',
       });
       const id = options.headers['x-message-id'];
       expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
@@ -284,6 +285,33 @@ describe('ThinQ Connect HTTP client', () => {
       .mockReturnValueOnce(response([]));
     await expect(service.getDevices()).rejects.toThrow('ThinQ request failed.');
     await expect(service.getDevices()).resolves.toEqual([]);
+  });
+
+  it('includes ThinQ error code and message for HTTP 400 without leaking the PAT', async () => {
+    const service = new ThinqService(http as never, config(credentials));
+    const request = {
+      headers: new AxiosHeaders({ Authorization: 'Bearer test-pat' }),
+    };
+    http.request.mockReturnValue(
+      throwError(
+        () =>
+          new AxiosError('bad request', 'ERR_BAD_REQUEST', request, undefined, {
+            status: 400,
+            statusText: 'Bad Request',
+            data: {
+              error: {
+                code: '1102',
+                message: 'Unacceptable parameters',
+              },
+            },
+            headers: {},
+            config: request,
+          }),
+      ),
+    );
+    await expect(service.registerMqttClient()).rejects.toThrow(
+      'ThinQ request failed (HTTP 400 1102: Unacceptable parameters).',
+    );
   });
 
   it.each([null, {}, [{ deviceId: 1 }]])(
