@@ -15,8 +15,10 @@ import { type ThinqDryerState, ThinqService } from './thinq.service';
 
 const AMAZON_ROOT_CA_URL =
   'https://www.amazontrust.com/repository/AmazonRootCA1.pem';
-/** Re-sync device event subscriptions when admins map/unmap dryers. */
+/** Re-sync mapped dryers without re-POSTing unchanged subscriptions. */
 const EVENT_REFRESH_MS = 900_000;
+/** ThinQ event subscriptions expire after 4464 hours; renew well before that. */
+const EVENT_RENEW_MS = 30 * 86_400_000;
 const RECONNECT_BASE_MS = 5_000;
 const RECONNECT_MAX_MS = 300_000;
 
@@ -34,8 +36,10 @@ export class ThinqMqttService implements OnModuleInit, OnModuleDestroy {
   private reconnectAttempt = 0;
   private reconnectTimer?: NodeJS.Timeout;
   private eventRefreshTimer?: NodeJS.Timeout;
+  private lastEventRenewAt = 0;
   private readonly stateByDeviceId = new Map<string, ThinqDryerState>();
   private subscribedDeviceIds = new Set<string>();
+  private readonly pushByDeviceId = new Map<string, Promise<void>>();
 
   constructor(
     private readonly thinqService: ThinqService,
@@ -80,6 +84,14 @@ export class ThinqMqttService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Keep MQTT merge cache aligned with authoritative REST snapshots. */
+  rememberDeviceState(deviceId: string, state: ThinqDryerState): void {
+    this.stateByDeviceId.set(deviceId, {
+      runState: state.runState ? { ...state.runState } : undefined,
+      timer: state.timer ? { ...state.timer } : undefined,
+    });
+  }
+
   /** Test seam: apply a decoded MQTT payload. */
   async handlePushPayload(payload: unknown): Promise<void> {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -87,21 +99,47 @@ export class ThinqMqttService implements OnModuleInit, OnModuleDestroy {
     }
     const message = payload as ThinqPushMessage;
     if (typeof message.deviceId !== 'string' || !message.deviceId) return;
-    const merged = mergeThinqDryerReport(
-      this.stateByDeviceId.get(message.deviceId),
-      message.report,
-    );
-    this.stateByDeviceId.set(message.deviceId, merged);
+    if (
+      !message.report ||
+      typeof message.report !== 'object' ||
+      Array.isArray(message.report)
+    ) {
+      return;
+    }
+    const deviceId = message.deviceId;
+    const report = message.report;
+    const previous = this.pushByDeviceId.get(deviceId) ?? Promise.resolve();
+    const next = previous
+      .catch(() => undefined)
+      .then(() => this.applyPush(deviceId, report));
+    this.pushByDeviceId.set(deviceId, next);
+    try {
+      await next;
+    } finally {
+      if (this.pushByDeviceId.get(deviceId) === next) {
+        this.pushByDeviceId.delete(deviceId);
+      }
+    }
+  }
+
+  private async applyPush(
+    deviceId: string,
+    report: ThinqDryerState,
+  ): Promise<void> {
     const machines = await this.machineRepository.getMachines();
     const machine = machines.find(
       (entry) =>
-        entry.type === MachineType.DRYER &&
-        entry.thinqDeviceId === message.deviceId,
+        entry.type === MachineType.DRYER && entry.thinqDeviceId === deviceId,
     );
     if (!machine) return;
+    const merged = mergeThinqDryerReport(
+      this.stateByDeviceId.get(deviceId),
+      report,
+    );
+    this.stateByDeviceId.set(deviceId, merged);
     await this.machineService.updateThinqDryerState(
       machine.uuid,
-      message.deviceId,
+      deviceId,
       merged,
     );
   }
@@ -130,10 +168,20 @@ export class ThinqMqttService implements OnModuleInit, OnModuleDestroy {
     await this.thinqService.registerMqttClient();
     const { privateKeyPem, csrBody } = this.createMqttIdentity();
     const issued = await this.thinqService.issueMqttCertificate(csrBody);
+    const topic = issued.subscriptions[0];
+    if (!topic) {
+      throw new Error('ThinQ MQTT subscription topic is missing.');
+    }
     const ca = await this.downloadAmazonRootCa();
     if (this.stopped) return;
 
     await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const settle = (finish: () => void) => {
+        if (settled) return;
+        settled = true;
+        finish();
+      };
       const client = mqtt.connect(`mqtts://${host}:8883`, {
         clientId,
         key: privateKeyPem,
@@ -147,19 +195,21 @@ export class ThinqMqttService implements OnModuleInit, OnModuleDestroy {
       const onConnect = () => {
         cleanup();
         this.client = client;
-        this.reconnectAttempt = 0;
-        client.subscribe(issued.subscriptions[0], { qos: 1 }, (error) => {
+        client.subscribe(topic, { qos: 1 }, (error) => {
           if (error) {
-            reject(error);
+            this.client = undefined;
+            client.end(true);
+            settle(() => reject(error));
             return;
           }
-          resolve();
+          this.reconnectAttempt = 0;
+          settle(() => resolve());
         });
       };
       const onError = (error: Error) => {
         cleanup();
         client.end(true);
-        reject(error);
+        settle(() => reject(error));
       };
       const cleanup = () => {
         client.off('connect', onConnect);
@@ -171,13 +221,17 @@ export class ThinqMqttService implements OnModuleInit, OnModuleDestroy {
         void this.onMessage(buffer);
       });
       client.on('close', () => {
+        settle(() => reject(new Error('ThinQ MQTT closed before connect.')));
         if (this.client !== client) return;
         this.client = undefined;
         this.scheduleReconnect();
       });
     });
 
+    // New MQTT session: re-register device event subscriptions.
+    this.lastEventRenewAt = 0;
     await this.refreshEventSubscriptions();
+    await this.snapshotMappedDryers();
     this.logger.log('ThinQ MQTT connected.');
   }
 
@@ -207,6 +261,9 @@ export class ThinqMqttService implements OnModuleInit, OnModuleDestroy {
 
   private async refreshEventSubscriptions(): Promise<void> {
     if (!this.thinqService.enabled || this.stopped) return;
+    const renewAll =
+      this.lastEventRenewAt === 0 ||
+      Date.now() - this.lastEventRenewAt >= EVENT_RENEW_MS;
     const machines = await this.machineRepository.getMachines();
     const wanted = new Set(
       machines
@@ -218,25 +275,53 @@ export class ThinqMqttService implements OnModuleInit, OnModuleDestroy {
         )
         .map((machine) => machine.thinqDeviceId as string),
     );
-    for (const deviceId of this.subscribedDeviceIds) {
+    for (const deviceId of [...this.subscribedDeviceIds]) {
       if (wanted.has(deviceId)) continue;
       try {
         await this.thinqService.unsubscribeDeviceEvent(deviceId);
+        this.subscribedDeviceIds.delete(deviceId);
+        this.stateByDeviceId.delete(deviceId);
       } catch (error: unknown) {
         this.logger.error(
           `Failed to unsubscribe ThinQ device ${deviceId}: ${formatError(error)}`,
         );
       }
-      this.subscribedDeviceIds.delete(deviceId);
-      this.stateByDeviceId.delete(deviceId);
     }
     for (const deviceId of wanted) {
+      if (!renewAll && this.subscribedDeviceIds.has(deviceId)) continue;
       try {
         await this.thinqService.subscribeDeviceEvent(deviceId);
         this.subscribedDeviceIds.add(deviceId);
       } catch (error: unknown) {
         this.logger.error(
           `Failed to subscribe ThinQ device ${deviceId}: ${formatError(error)}`,
+        );
+      }
+    }
+    if (renewAll) this.lastEventRenewAt = Date.now();
+  }
+
+  private async snapshotMappedDryers(): Promise<void> {
+    const machines = await this.machineRepository.getMachines();
+    for (const machine of machines) {
+      if (this.stopped) return;
+      if (machine.type !== MachineType.DRYER || !machine.thinqDeviceId) {
+        continue;
+      }
+      try {
+        const state = await this.thinqService.getDryerState(
+          machine.thinqDeviceId,
+        );
+        if (this.stopped) return;
+        this.rememberDeviceState(machine.thinqDeviceId, state);
+        await this.machineService.updateThinqDryerState(
+          machine.uuid,
+          machine.thinqDeviceId,
+          state,
+        );
+      } catch (error: unknown) {
+        this.logger.error(
+          `Failed to snapshot ThinQ machine ${machine.uuid}: ${formatError(error)}`,
         );
       }
     }

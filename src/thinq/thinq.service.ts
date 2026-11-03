@@ -140,7 +140,8 @@ export class ThinqService {
       typeof certificatePem !== 'string' ||
       !certificatePem ||
       !Array.isArray(subscriptions) ||
-      typeof subscriptions[0] !== 'string'
+      typeof subscriptions[0] !== 'string' ||
+      !subscriptions[0]
     ) {
       throw new ServiceUnavailableException('Invalid ThinQ MQTT certificate.');
     }

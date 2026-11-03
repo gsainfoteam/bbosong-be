@@ -27,6 +27,7 @@ describe('ThinQ MQTT service', () => {
     issueMqttCertificate: jest.fn(),
     subscribeDeviceEvent: jest.fn(),
     unsubscribeDeviceEvent: jest.fn(),
+    getDryerState: jest.fn(),
   };
   const repository = { getMachines: jest.fn() };
   const machines = { updateThinqDryerState: jest.fn() };
@@ -81,12 +82,95 @@ describe('ThinQ MQTT service', () => {
     );
   });
 
-  it('ignores pushes for unmapped devices', async () => {
+  it('ignores pushes without a report object', async () => {
+    await service.handlePushPayload({ deviceId: 'device-1' });
+    await service.handlePushPayload({ deviceId: 'device-1', report: null });
+    expect(machines.updateThinqDryerState).not.toHaveBeenCalled();
+  });
+
+  it('ignores pushes for unmapped devices without caching them', async () => {
     await service.handlePushPayload({
       deviceId: 'unknown',
       report: { runState: { currentState: 'RUNNING' } },
     });
     expect(machines.updateThinqDryerState).not.toHaveBeenCalled();
+    service.rememberDeviceState('device-1', {
+      runState: { currentState: 'END' },
+    });
+    await service.handlePushPayload({
+      deviceId: 'device-1',
+      report: { timer: { remainMinute: 10 } },
+    });
+    expect(machines.updateThinqDryerState).toHaveBeenCalledWith(
+      'dryer',
+      'device-1',
+      {
+        runState: { currentState: 'END' },
+        timer: { remainMinute: 10 },
+      },
+    );
+  });
+
+  it('keeps REST snapshots ahead of later partial MQTT timer reports', async () => {
+    service.rememberDeviceState('device-1', {
+      runState: { currentState: 'RUNNING' },
+      timer: { remainHour: 1, remainMinute: 0 },
+    });
+    service.rememberDeviceState('device-1', {
+      runState: { currentState: 'END' },
+      timer: { remainHour: 0, remainMinute: 0 },
+    });
+    await service.handlePushPayload({
+      deviceId: 'device-1',
+      report: { timer: { remainMinute: 59 } },
+    });
+    expect(machines.updateThinqDryerState).toHaveBeenCalledWith(
+      'dryer',
+      'device-1',
+      {
+        runState: { currentState: 'END' },
+        timer: { remainHour: 0, remainMinute: 59 },
+      },
+    );
+  });
+
+  it('serializes overlapping pushes for the same device', async () => {
+    let releaseFirst!: () => void;
+    machines.updateThinqDryerState
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(undefined);
+    const first = service.handlePushPayload({
+      deviceId: 'device-1',
+      report: { runState: { currentState: 'RUNNING' } },
+    });
+    const second = service.handlePushPayload({
+      deviceId: 'device-1',
+      report: { runState: { currentState: 'END' } },
+    });
+    for (let i = 0; i < 20; i += 1) {
+      if (machines.updateThinqDryerState.mock.calls.length > 0) break;
+      await Promise.resolve();
+    }
+    expect(machines.updateThinqDryerState).toHaveBeenCalledTimes(1);
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(
+      (
+        machines.updateThinqDryerState.mock.calls as [
+          string,
+          string,
+          { runState?: { currentState?: string }; timer?: unknown },
+        ][]
+      ).map((call) => call[2]),
+    ).toEqual([
+      { runState: { currentState: 'RUNNING' }, timer: undefined },
+      { runState: { currentState: 'END' }, timer: undefined },
+    ]);
   });
 
   it('does not connect when ThinQ is disabled', () => {

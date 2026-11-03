@@ -27,6 +27,7 @@ describe('ThinQ reconcile polling', () => {
   };
   const repository = { getMachines: jest.fn() };
   const machines = { updateThinqDryerState: jest.fn() };
+  const mqtt = { rememberDeviceState: jest.fn() };
   let service: ThinqPollingService;
 
   beforeEach(() => {
@@ -48,6 +49,7 @@ describe('ThinQ reconcile polling', () => {
       thinq as never,
       repository as never,
       machines as never,
+      mqtt as never,
     );
   });
   afterEach(async () => {
@@ -59,9 +61,19 @@ describe('ThinQ reconcile polling', () => {
   it('queries the list before a startup snapshot of mapped dryers and refreshes the list every 15 minutes', async () => {
     repository.getMachines.mockResolvedValue([
       dryer,
-      { uuid: 'washer', type: 'WASHER', thinqDeviceId: 'device-2', status: 'IDLE' },
+      {
+        uuid: 'washer',
+        type: 'WASHER',
+        thinqDeviceId: 'device-2',
+        status: 'IDLE',
+      },
       { uuid: 'unmapped', type: 'DRYER', thinqDeviceId: null, status: 'IDLE' },
-      { uuid: 'missing', type: 'DRYER', thinqDeviceId: 'unknown', status: 'IDLE' },
+      {
+        uuid: 'missing',
+        type: 'DRYER',
+        thinqDeviceId: 'unknown',
+        status: 'IDLE',
+      },
     ]);
     service.onModuleInit();
     await jest.advanceTimersByTimeAsync(0);
@@ -132,6 +144,18 @@ describe('ThinQ reconcile polling', () => {
       'device-2',
       { runState: { currentState: 'RUNNING' } },
     );
+    expect(mqtt.rememberDeviceState).toHaveBeenCalledWith('device-2', {
+      runState: { currentState: 'RUNNING' },
+    });
+  });
+
+  it('retries a full startup snapshot when any dryer reconcile fails', async () => {
+    thinq.getDryerState.mockRejectedValueOnce(new Error('timeout'));
+    service.onModuleInit();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(thinq.getDryerState).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(600_000);
+    expect(thinq.getDryerState).toHaveBeenCalledTimes(2);
   });
 
   it('re-reads mappings and deletions each cycle for DRY dryers', async () => {

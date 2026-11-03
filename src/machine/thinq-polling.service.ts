@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { MachineStatus, MachineType } from 'generated/prisma/client';
 import { formatError } from '../common/utils/format-error.util';
+import { ThinqMqttService } from '../thinq/thinq-mqtt.service';
 import { ThinqService } from '../thinq/thinq.service';
 import { MachineService } from './machine.service';
 
@@ -26,6 +27,7 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
     private readonly thinqService: ThinqService,
     private readonly machineRepository: MachineRepository,
     private readonly machineService: MachineService,
+    private readonly thinqMqttService: ThinqMqttService,
   ) {}
 
   onModuleInit(): void {
@@ -71,6 +73,7 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
     }
     const machines = await this.machineRepository.getMachines();
     const fullSnapshot = !this.initialSnapshotDone;
+    let failed = false;
     for (const machine of machines) {
       if (this.stopped) return;
       if (
@@ -89,17 +92,19 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
           machine.thinqDeviceId,
         );
         if (this.stopped) return;
+        this.thinqMqttService.rememberDeviceState(machine.thinqDeviceId, state);
         await this.machineService.updateThinqDryerState(
           machine.uuid,
           machine.thinqDeviceId,
           state,
         );
       } catch (error: unknown) {
+        failed = true;
         this.logger.error(
           `Failed to reconcile ThinQ machine ${machine.uuid}: ${formatError(error)}`,
         );
       }
     }
-    this.initialSnapshotDone = true;
+    if (!failed) this.initialSnapshotDone = true;
   }
 }

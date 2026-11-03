@@ -118,6 +118,18 @@ describe('ThinQ Connect HTTP client', () => {
         '-----BEGIN CERTIFICATE-----\nA\n-----END CERTIFICATE-----',
       subscriptions: ['app/clients/test-client'],
     });
+    http.request.mockReturnValueOnce(
+      response({
+        result: {
+          certificatePem:
+            '-----BEGIN CERTIFICATE-----\nA\n-----END CERTIFICATE-----',
+          subscriptions: [''],
+        },
+      }),
+    );
+    await expect(service.issueMqttCertificate('csr-body')).rejects.toThrow(
+      'Invalid ThinQ MQTT certificate.',
+    );
     await service.subscribeDeviceEvent('dryer/id');
     await service.unsubscribeDeviceEvent('dryer/id');
     expect(
@@ -139,6 +151,11 @@ describe('ThinQ Connect HTTP client', () => {
           'device-type': '607',
           allowExist: true,
         },
+      ],
+      [
+        'POST',
+        'https://api-kic.lgthinq.com/client/certificate',
+        { 'service-code': 'SVC202', csr: 'csr-body' },
       ],
       [
         'POST',
