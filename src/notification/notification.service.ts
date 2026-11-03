@@ -183,16 +183,19 @@ export class NotificationService {
       url: '/',
     };
 
-    // One failed push must not keep every subscription alive for a resend.
-    await Promise.allSettled(
+    // One failed push must not block the others.
+    const results = await Promise.allSettled(
       subscribers.map((sub) =>
         this.webPushService.sendWebPushToUser(sub.userUuid, payload),
       ),
     );
 
-    // Delete only what was notified so subscriptions created meanwhile survive.
+    // Delete only what was notified so failed sends and subscriptions created
+    // meanwhile survive for the next availability event.
     await this.notificationRepository.deleteLaundryRoomSubscriptionsByUuids(
-      subscribers.map((sub) => sub.uuid),
+      subscribers
+        .filter((_, i) => results[i].status === 'fulfilled')
+        .map((sub) => sub.uuid),
     );
   }
 

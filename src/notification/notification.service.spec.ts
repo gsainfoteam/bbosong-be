@@ -149,7 +149,7 @@ describe('laundry room availability subscription', () => {
     ).not.toHaveBeenCalled();
   });
 
-  it('deletes only notified subscriptions even when a push fails', async () => {
+  it('keeps subscriptions whose push failed for the next event', async () => {
     notificationRepository.getLaundryRoomSubscribers.mockResolvedValue([
       { uuid: 'sub-1', userUuid: 'user-1' },
       { uuid: 'sub-2', userUuid: 'user-2' },
@@ -162,6 +162,6 @@ describe('laundry room availability subscription', () => {
     expect(webPushService.sendWebPushToUser).toHaveBeenCalledTimes(2);
     expect(
       notificationRepository.deleteLaundryRoomSubscriptionsByUuids,
-    ).toHaveBeenCalledWith(['sub-1', 'sub-2']);
+    ).toHaveBeenCalledWith(['sub-2']);
   });
 });
