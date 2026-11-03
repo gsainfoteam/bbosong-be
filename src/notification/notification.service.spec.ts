@@ -52,3 +52,23 @@ it('sends offline alerts only to active administrators with existing push subscr
     url: '/admin/machines',
   });
 });
+
+it('sends dryer error alerts over the same web-push channel as completion', async () => {
+  const sendWebPushToUser = jest.fn().mockResolvedValue(undefined);
+  const service = new NotificationService(
+    {} as never,
+    {
+      sendWebPushToUser,
+    } as never,
+  );
+  await service.notifyMachineError('user-1', {
+    location: Location.A,
+    type: MachineType.DRYER,
+    index: 3,
+  } as Machine);
+  expect(sendWebPushToUser).toHaveBeenCalledWith('user-1', {
+    title: '건조기 오류 알림 🧺',
+    body: 'A동 3번 건조기에 오류가 발생했습니다. 기기를 확인해 주세요.',
+    url: '/',
+  });
+});
