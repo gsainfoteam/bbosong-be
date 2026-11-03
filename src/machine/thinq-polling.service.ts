@@ -5,8 +5,9 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { MachineType } from 'generated/prisma/client';
+import { MachineStatus, MachineType } from 'generated/prisma/client';
 import { formatError } from '../common/utils/format-error.util';
+import { ThinqMqttService } from '../thinq/thinq-mqtt.service';
 import { ThinqService } from '../thinq/thinq.service';
 import { MachineService } from './machine.service';
 
@@ -20,11 +21,13 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
   private stopped = false;
   private deviceIds?: Set<string>;
   private deviceListUpdatedAt = 0;
+  private initialSnapshotDone = false;
 
   constructor(
     private readonly thinqService: ThinqService,
     private readonly machineRepository: MachineRepository,
     private readonly machineService: MachineService,
+    private readonly thinqMqttService: ThinqMqttService,
   ) {}
 
   onModuleInit(): void {
@@ -50,7 +53,7 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
     if (this.polling) return this.polling;
     this.polling = this.refresh()
       .catch((error: unknown) => {
-        this.logger.error(`Failed to poll ThinQ: ${formatError(error)}`);
+        this.logger.error(`Failed to reconcile ThinQ: ${formatError(error)}`);
       })
       .finally(() => {
         this.polling = undefined;
@@ -69,6 +72,8 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
       this.deviceListUpdatedAt = Date.now();
     }
     const machines = await this.machineRepository.getMachines();
+    const fullSnapshot = !this.initialSnapshotDone;
+    let failed = false;
     for (const machine of machines) {
       if (this.stopped) return;
       if (
@@ -78,21 +83,28 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
       ) {
         continue;
       }
+      // After the startup snapshot, REST only reconciles dryers already in use.
+      if (!fullSnapshot && machine.status !== MachineStatus.DRY) {
+        continue;
+      }
       try {
         const state = await this.thinqService.getDryerState(
           machine.thinqDeviceId,
         );
         if (this.stopped) return;
+        this.thinqMqttService.rememberDeviceState(machine.thinqDeviceId, state);
         await this.machineService.updateThinqDryerState(
           machine.uuid,
           machine.thinqDeviceId,
           state,
         );
       } catch (error: unknown) {
+        failed = true;
         this.logger.error(
-          `Failed to poll ThinQ machine ${machine.uuid}: ${formatError(error)}`,
+          `Failed to reconcile ThinQ machine ${machine.uuid}: ${formatError(error)}`,
         );
       }
     }
+    if (!failed) this.initialSnapshotDone = true;
   }
 }
