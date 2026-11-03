@@ -85,7 +85,7 @@ export class GetMachineResDto {
 
   @ApiProperty({
     description:
-      'Matter connectivity: true online, false offline after 60 seconds unavailable, null uncommissioned or pending first check',
+      'Matter connectivity: true online, false offline after 60 seconds unavailable, null for ThinQ devices, uncommissioned devices or pending first check',
     type: Boolean,
     nullable: true,
   })
@@ -99,6 +99,29 @@ export class GetMachineResDto {
     nullable: true,
   })
   lastSeenAt: Date | null;
+
+  @ApiProperty({ description: 'Mapped ThinQ device ID', nullable: true })
+  thinqDeviceId: string | null;
+
+  @ApiProperty({
+    description: 'Last ThinQ runState.currentState',
+    nullable: true,
+  })
+  thinqCurrentState: string | null;
+
+  @ApiProperty({
+    description: 'Remaining drying time in minutes, when supplied by ThinQ',
+    nullable: true,
+  })
+  thinqRemainingMinutes: number | null;
+
+  @ApiProperty({
+    description: 'Last successful ThinQ state query',
+    type: String,
+    format: 'date-time',
+    nullable: true,
+  })
+  thinqUpdatedAt: Date | null;
 
   constructor(machine: Machine, connectivity: MachineConnectivity) {
     this.uuid = machine.uuid;
@@ -114,5 +137,9 @@ export class GetMachineResDto {
     this.shortCode = machine.shortCode;
     this.isOnline = connectivity.isOnline;
     this.lastSeenAt = connectivity.lastSeenAt;
+    this.thinqDeviceId = machine.thinqDeviceId;
+    this.thinqCurrentState = machine.thinqCurrentState;
+    this.thinqRemainingMinutes = machine.thinqRemainingMinutes;
+    this.thinqUpdatedAt = machine.thinqUpdatedAt;
   }
 }

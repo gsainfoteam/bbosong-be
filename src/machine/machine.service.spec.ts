@@ -62,12 +62,19 @@ describe('MachineService access and registration', () => {
     getMachine: jest.fn(),
     getMachineWithUsage: jest.fn(),
     getMachineWithUsageByShortCode: jest.fn(),
+    getMachines: jest.fn(),
+    getMachineTypeByMacAddress: jest.fn(),
+    updateMachine: jest.fn(),
+    updateThinqDryerState: jest.fn(),
+    recordMachinePowerByMacAddress: jest.fn(),
+    updateMachineStatusByMacAddress: jest.fn(),
   };
   const usingMachineRepository = {
     confirmCompletedAndRegister: jest.fn(),
     finishUsingMachine: jest.fn(),
     enableMachineNotification: jest.fn(),
     getUsingMachineByMachineUuid: jest.fn(),
+    createUsingMachine: jest.fn(),
   };
   let service: MachineService;
   const notificationService = {
@@ -389,5 +396,352 @@ describe('MachineService access and registration', () => {
     expect(
       notificationService.notifyLaundryRoomAvailable,
     ).toHaveBeenCalledTimes(1);
+  });
+
+  describe('ThinQ dryer lifecycle', () => {
+    beforeEach(() => {
+      machineRepository.updateThinqDryerState.mockResolvedValue(1);
+      machineRepository.getMachine.mockResolvedValue({
+        ...machine,
+        type: MachineType.DRYER,
+        thinqDeviceId: 'device',
+        macAddress: null,
+      });
+    });
+
+    it.each([null, false, true])(
+      'initializes and tracks a deviceId-only dryer without a MAC (isCommissioned=%s)',
+      async (isCommissioned) => {
+        const dryer = {
+          ...machine,
+          type: MachineType.DRYER,
+          status: MachineStatus.IDLE,
+          thinqDeviceId: 'device',
+          macAddress: null,
+          matterPayload: null,
+          isCommissioned,
+        };
+        machineRepository.getMachines.mockResolvedValue([dryer]);
+        service = new MachineService(
+          machineRepository as never,
+          usingMachineRepository as never,
+          notificationService as never,
+          { addPowerListener: jest.fn() } as never,
+          {} as never,
+          {} as never,
+        );
+        await expect(service.onModuleInit()).resolves.toBeUndefined();
+        await service.updateThinqDryerState(machineUuid, 'device', {
+          runState: { currentState: 'RUNNING' },
+          timer: { remainHour: 0, remainMinute: 20 },
+        });
+        await service.updateThinqDryerState(machineUuid, 'device', {
+          runState: { currentState: 'END' },
+        });
+        expect(usingMachineRepository.createUsingMachine).toHaveBeenCalledWith(
+          machineUuid,
+          undefined,
+          true,
+        );
+        expect(usingMachineRepository.finishUsingMachine).toHaveBeenCalledWith(
+          machineUuid,
+        );
+        expect(
+          machineRepository.recordMachinePowerByMacAddress,
+        ).not.toHaveBeenCalled();
+        expect(
+          machineRepository.updateMachineStatusByMacAddress,
+        ).not.toHaveBeenCalled();
+        await service.onModuleDestroy();
+      },
+    );
+
+    it('keeps the MAC requirement for commissioned Matter washers', async () => {
+      machineRepository.getMachines.mockResolvedValue([
+        { ...machine, macAddress: null, isCommissioned: true },
+      ]);
+      await expect(service.onModuleInit()).rejects.toThrow(
+        'mac address is not set',
+      );
+    });
+
+    it('rejects Matter commissioning for a ThinQ dryer', async () => {
+      machineRepository.getMachine.mockResolvedValue({
+        ...machine,
+        type: MachineType.DRYER,
+        thinqDeviceId: 'device',
+        macAddress: null,
+        matterPayload: null,
+        isCommissioned: null,
+      });
+      await expect(service.commissionMachine(machineUuid)).rejects.toThrow(
+        'ThinQ dryers do not require Matter commissioning.',
+      );
+    });
+
+    it.each(['RUNNING', 'DETECTING', 'COOLING', 'PAUSE', 'WRINKLE_CARE'])(
+      'treats %s as occupied and records remaining time',
+      async (currentState) => {
+        await service.updateThinqDryerState(machineUuid, 'device', {
+          runState: { currentState },
+          timer: { remainHour: 1, remainMinute: 20 },
+        });
+        expect(machineRepository.updateThinqDryerState).toHaveBeenCalledWith(
+          machineUuid,
+          'device',
+          currentState,
+          80,
+          MachineStatus.DRY,
+        );
+        expect(usingMachineRepository.createUsingMachine).toHaveBeenCalledWith(
+          machineUuid,
+          undefined,
+          true,
+        );
+        expect(
+          usingMachineRepository.finishUsingMachine,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['END', 'POWER_OFF', 'SLEEP', 'INITIAL'])(
+      'closes the usage on %s',
+      async (currentState) => {
+        await service.updateThinqDryerState(machineUuid, 'device', {
+          runState: { currentState },
+        });
+        expect(machineRepository.updateThinqDryerState).toHaveBeenCalledWith(
+          machineUuid,
+          'device',
+          currentState,
+          null,
+          MachineStatus.IDLE,
+        );
+        expect(usingMachineRepository.finishUsingMachine).toHaveBeenCalledWith(
+          machineUuid,
+        );
+        expect(
+          usingMachineRepository.createUsingMachine,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['ERROR', 'RESERVED', 'UNKNOWN'])(
+      'keeps the lifecycle unchanged for %s even with zero remaining time',
+      async (currentState) => {
+        await service.updateThinqDryerState(machineUuid, 'device', {
+          runState: { currentState },
+          timer: { remainHour: 0, remainMinute: 0 },
+        });
+        expect(machineRepository.updateThinqDryerState).toHaveBeenCalledWith(
+          machineUuid,
+          'device',
+          currentState,
+          0,
+          null,
+        );
+        expect(
+          usingMachineRepository.createUsingMachine,
+        ).not.toHaveBeenCalled();
+        expect(
+          usingMachineRepository.finishUsingMachine,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      {},
+      { remainHour: 1 },
+      { remainHour: -1, remainMinute: 20 },
+      { remainHour: 0, remainMinute: 60 },
+      { remainHour: 0.5, remainMinute: 0 },
+      { remainHour: Infinity, remainMinute: 0 },
+    ])(
+      'does not invent remaining time for missing or invalid timers: %j',
+      async (timer) => {
+        await service.updateThinqDryerState(machineUuid, 'device', { timer });
+        expect(machineRepository.updateThinqDryerState).toHaveBeenCalledWith(
+          machineUuid,
+          'device',
+          null,
+          null,
+          null,
+        );
+      },
+    );
+
+    it('ignores an obsolete state response after deletion or remapping', async () => {
+      machineRepository.updateThinqDryerState.mockResolvedValue(0);
+      await service.updateThinqDryerState(machineUuid, 'device', {
+        runState: { currentState: 'END' },
+      });
+      expect(usingMachineRepository.finishUsingMachine).not.toHaveBeenCalled();
+    });
+
+    it('retries a failed usage transition on the next poll', async () => {
+      usingMachineRepository.createUsingMachine.mockRejectedValueOnce(
+        new Error('database unavailable'),
+      );
+      const state = { runState: { currentState: 'RUNNING' } };
+      await expect(
+        service.updateThinqDryerState(machineUuid, 'device', state),
+      ).rejects.toThrow('database unavailable');
+      await service.updateThinqDryerState(machineUuid, 'device', state);
+      expect(usingMachineRepository.createUsingMachine).toHaveBeenCalledTimes(
+        2,
+      );
+    });
+  });
+
+  describe('Power status source selection', () => {
+    const washer = {
+      ...machine,
+      macAddress: 'washer-mac',
+      status: MachineStatus.IDLE,
+    };
+    let powerListener: (mac: string, power: number) => Promise<void>;
+    beforeEach(async () => {
+      jest.useFakeTimers();
+      machineRepository.getMachines.mockResolvedValue([washer]);
+      machineRepository.getMachineTypeByMacAddress = jest
+        .fn()
+        .mockResolvedValue(MachineType.WASHER);
+      service = new MachineService(
+        machineRepository as never,
+        usingMachineRepository as never,
+        notificationService as never,
+        {
+          addPowerListener: (listener: typeof powerListener) => {
+            powerListener = listener;
+          },
+        } as never,
+        {} as never,
+        {} as never,
+      );
+      await service.onModuleInit();
+    });
+    afterEach(async () => {
+      await service.onModuleDestroy();
+      jest.useRealTimers();
+    });
+
+    it('retains washer thresholds, unit conversion and the three-minute completion timer', async () => {
+      await powerListener('washer-mac', 20_000);
+      expect(
+        machineRepository.recordMachinePowerByMacAddress,
+      ).toHaveBeenCalledWith('washer-mac', 20);
+      expect(
+        machineRepository.updateMachineStatusByMacAddress,
+      ).toHaveBeenCalledWith('washer-mac', MachineStatus.WASH);
+      await powerListener('washer-mac', 1000);
+      await jest.advanceTimersByTimeAsync(179_999);
+      expect(usingMachineRepository.finishUsingMachine).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      expect(
+        machineRepository.updateMachineStatusByMacAddress,
+      ).toHaveBeenLastCalledWith('washer-mac', MachineStatus.IDLE);
+      expect(usingMachineRepository.finishUsingMachine).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    it('cancels the washer completion timer when power rises again', async () => {
+      await powerListener('washer-mac', 20_000);
+      await powerListener('washer-mac', 1000);
+      await jest.advanceTimersByTimeAsync(120_000);
+      await powerListener('washer-mac', 20_000);
+      await jest.advanceTimersByTimeAsync(180_000);
+      expect(usingMachineRepository.finishUsingMachine).not.toHaveBeenCalled();
+    });
+
+    it('forgets Matter power tracking when a dryer is mapped to ThinQ', async () => {
+      const dryer = {
+        ...machine,
+        uuid: 'dryer',
+        type: MachineType.DRYER,
+        macAddress: 'dryer-mac',
+        status: MachineStatus.DRY,
+        thinqDeviceId: null,
+      };
+      machineRepository.getMachines.mockResolvedValue([dryer, washer]);
+      await service.onModuleInit();
+      machineRepository.getMachine.mockResolvedValue(dryer);
+      machineRepository.updateMachine.mockResolvedValue({
+        ...dryer,
+        thinqDeviceId: 'device',
+        macAddress: null,
+        isCommissioned: false,
+      });
+
+      await powerListener('dryer-mac', 1000);
+      await service.updateMachine('dryer', { thinqDeviceId: 'device' });
+      machineRepository.recordMachinePowerByMacAddress.mockRejectedValue(
+        new NotFoundException('Machine not found.'),
+      );
+      await powerListener('dryer-mac', 0);
+      await jest.advanceTimersByTimeAsync(180_000);
+
+      expect(usingMachineRepository.finishUsingMachine).not.toHaveBeenCalled();
+      expect(
+        machineRepository.updateMachineStatusByMacAddress,
+      ).not.toHaveBeenCalledWith('dryer-mac', expect.anything());
+    });
+
+    it.each([null, 'other-device'])(
+      'closes an active ThinQ session before mapping changes to %s',
+      async (deviceId) => {
+        const dryer = {
+          ...machine,
+          uuid: 'dryer',
+          type: MachineType.DRYER,
+          macAddress: null,
+          status: MachineStatus.DRY,
+          thinqDeviceId: 'device',
+        };
+        const callOrder: string[] = [];
+        machineRepository.getMachine.mockResolvedValue(dryer);
+        machineRepository.updateMachine.mockImplementation(() => {
+          callOrder.push('update');
+          return Promise.resolve({
+            ...dryer,
+            thinqDeviceId: deviceId,
+            status: MachineStatus.IDLE,
+          });
+        });
+        usingMachineRepository.finishUsingMachine.mockImplementation(() => {
+          callOrder.push('finish');
+          return Promise.resolve({
+            uuid: 'usage',
+            machineUuid: 'dryer',
+            userUuid,
+            notifyOnCompletion: true,
+          });
+        });
+
+        await service.updateMachine('dryer', { thinqDeviceId: deviceId });
+
+        expect(callOrder).toEqual(['finish', 'update']);
+        expect(usingMachineRepository.finishUsingMachine).toHaveBeenCalledWith(
+          'dryer',
+        );
+        expect(notificationService.notifyMachineCompletion).toHaveBeenCalled();
+      },
+    );
+
+    it('does not start a ThinQ usage after the mapping disappears mid-poll', async () => {
+      machineRepository.updateThinqDryerState.mockResolvedValue(1);
+      machineRepository.getMachine.mockResolvedValue({
+        ...machine,
+        uuid: 'dryer',
+        type: MachineType.DRYER,
+        thinqDeviceId: null,
+      });
+
+      await service.updateThinqDryerState('dryer', 'device', {
+        runState: { currentState: 'RUNNING' },
+      });
+
+      expect(usingMachineRepository.createUsingMachine).not.toHaveBeenCalled();
+    });
   });
 });

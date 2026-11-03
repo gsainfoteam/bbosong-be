@@ -6,7 +6,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { Machine } from 'generated/prisma/client';
+import { Machine, MachineType } from 'generated/prisma/client';
 import { formatError } from '../common/utils/format-error.util';
 import { NotificationService } from '../notification/notification.service';
 
@@ -52,7 +52,11 @@ export class MachineConnectivityService
   }
 
   get(machine: Machine): MachineConnectivity {
-    if (machine.deletedAt || !machine.isCommissioned) {
+    if (
+      machine.deletedAt ||
+      !machine.isCommissioned ||
+      (machine.type === MachineType.DRYER && machine.thinqDeviceId)
+    ) {
       return { isOnline: null, lastSeenAt: null };
     }
     const state = this.states.get(machine.uuid);
@@ -85,7 +89,12 @@ export class MachineConnectivityService
     if (this.stopped) return;
     const monitored = new Set<string>();
     for (const machine of machines) {
-      if (machine.deletedAt || !machine.isCommissioned) continue;
+      if (
+        machine.deletedAt ||
+        !machine.isCommissioned ||
+        (machine.type === MachineType.DRYER && machine.thinqDeviceId)
+      )
+        continue;
       monitored.add(machine.uuid);
       // Missing sites indicate a failed query, not confirmed device unavailability.
       if (!availableBySite.has(machine.location)) continue;

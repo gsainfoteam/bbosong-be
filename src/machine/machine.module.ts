@@ -8,12 +8,15 @@ import { MachineController } from './machine.controller';
 import { MachineService } from './machine.service';
 import { MachineConnectivityService } from './machine-connectivity.service';
 import { ShlinkService } from './shlink.service';
+import { ThinqModule } from '../thinq/thinq.module';
+import { ThinqPollingService } from './thinq-polling.service';
 
 @Module({
   imports: [
     DatabaseModule,
     AuditLogModule,
     NotificationModule,
+    ThinqModule,
     MatterClientModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
@@ -29,7 +32,12 @@ import { ShlinkService } from './shlink.service';
     }),
   ],
   controllers: [MachineController],
-  providers: [MachineService, ShlinkService, MachineConnectivityService],
+  providers: [
+    MachineService,
+    ShlinkService,
+    MachineConnectivityService,
+    ThinqPollingService,
+  ],
   exports: [MachineService],
 })
 export class MachineModule {}
