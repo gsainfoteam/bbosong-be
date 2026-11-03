@@ -89,6 +89,15 @@ export class NotificationService {
     await this.webPushService.sendWebPushToUser(userUuid, payload);
   }
 
+  async notifyMachineError(userUuid: string, machine: Machine): Promise<void> {
+    const typeName = this.machineTypeName(machine.type);
+    await this.webPushService.sendWebPushToUser(userUuid, {
+      title: `${typeName} 오류 알림 🧺`,
+      body: `${machine.location}동 ${machine.index}번 ${typeName}에 오류가 발생했습니다. 기기를 확인해 주세요.`,
+      url: '/',
+    });
+  }
+
   async notifyMachineReregistered(
     userUuid: string,
     machine: Machine,

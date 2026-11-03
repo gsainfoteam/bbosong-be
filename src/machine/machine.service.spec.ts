@@ -80,6 +80,7 @@ describe('MachineService access and registration', () => {
   const notificationService = {
     notifyMachineReregistered: jest.fn(),
     notifyMachineCompletion: jest.fn(),
+    notifyMachineError: jest.fn(),
     notifyLaundryRoomAvailable: jest.fn(),
   };
 
@@ -99,6 +100,7 @@ describe('MachineService access and registration', () => {
     usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue(null);
     machineRepository.getMachine.mockResolvedValue(machine);
     notificationService.notifyMachineCompletion.mockResolvedValue(undefined);
+    notificationService.notifyMachineError.mockResolvedValue(undefined);
     notificationService.notifyLaundryRoomAvailable.mockResolvedValue(undefined);
   });
 
@@ -548,6 +550,60 @@ describe('MachineService access and registration', () => {
         ).not.toHaveBeenCalled();
       },
     );
+
+    it('notifies the active user once when ThinQ reports ERROR', async () => {
+      const dryer = {
+        ...machine,
+        type: MachineType.DRYER,
+        thinqDeviceId: 'device',
+        thinqCurrentState: 'RUNNING',
+        macAddress: null,
+      };
+      machineRepository.getMachine.mockResolvedValue(dryer);
+      usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue({
+        machineUuid,
+        userUuid,
+        notifyOnCompletion: false,
+        endedAt: null,
+      });
+
+      await service.updateThinqDryerState(machineUuid, 'device', {
+        runState: { currentState: 'ERROR' },
+      });
+      machineRepository.getMachine.mockResolvedValue({
+        ...dryer,
+        thinqCurrentState: 'ERROR',
+      });
+      await service.updateThinqDryerState(machineUuid, 'device', {
+        runState: { currentState: 'ERROR' },
+      });
+
+      expect(notificationService.notifyMachineError).toHaveBeenCalledTimes(1);
+      expect(notificationService.notifyMachineError).toHaveBeenCalledWith(
+        userUuid,
+        dryer,
+      );
+      expect(usingMachineRepository.finishUsingMachine).not.toHaveBeenCalled();
+    });
+
+    it('skips error alerts without an active registered user', async () => {
+      machineRepository.getMachine.mockResolvedValue({
+        ...machine,
+        type: MachineType.DRYER,
+        thinqDeviceId: 'device',
+        thinqCurrentState: 'RUNNING',
+        macAddress: null,
+      });
+      usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue(
+        null,
+      );
+
+      await service.updateThinqDryerState(machineUuid, 'device', {
+        runState: { currentState: 'ERROR' },
+      });
+
+      expect(notificationService.notifyMachineError).not.toHaveBeenCalled();
+    });
 
     it.each([
       {},

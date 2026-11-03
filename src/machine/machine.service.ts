@@ -452,6 +452,12 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       hour * 60 + minute <= 2_147_483_647
         ? hour * 60 + minute
         : null;
+    // ThinQ Dryer profile: runState.currentState ERROR is an appliance fault.
+    // Compare against the stored snapshot so repeated polls do not re-alert.
+    const previousState =
+      currentState === 'ERROR'
+        ? (await this.machineRepository.getMachine(uuid))?.thinqCurrentState
+        : undefined;
     const count = await this.machineRepository.updateThinqDryerState(
       uuid,
       deviceId,
@@ -459,7 +465,11 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       remainingMinutes,
       status,
     );
-    if (!count || !status) return;
+    if (!count) return;
+    if (currentState === 'ERROR' && previousState !== 'ERROR') {
+      await this.notifyThinqDryerError(uuid);
+    }
+    if (!status) return;
     // These operations are idempotent and retried on the next successful poll.
     if (status === MachineStatus.DRY) {
       // Re-check after the snapshot write so an admin unmap cannot reopen usage.
@@ -469,6 +479,24 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     } else {
       await this.finishUsingMachine(uuid);
     }
+  }
+
+  private async notifyThinqDryerError(machineUuid: string): Promise<void> {
+    const usingMachine =
+      await this.usingMachineRepository.getUsingMachineByMachineUuid(
+        machineUuid,
+      );
+    if (!usingMachine?.userUuid) return;
+    const machine = await this.machineRepository.getMachine(machineUuid);
+    if (!machine) return;
+    await this.dispatchNotification(
+      () =>
+        this.notificationService.notifyMachineError(
+          usingMachine.userUuid!,
+          machine,
+        ),
+      `error notification for machine ${machineUuid}`,
+    );
   }
 
   async deleteMachine(uuid: string) {

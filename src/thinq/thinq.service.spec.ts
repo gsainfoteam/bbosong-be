@@ -216,4 +216,14 @@ describe('ThinQ Connect HTTP client', () => {
       );
     },
   );
+
+  it('returns appliance ERROR state from a successful poll without treating it as HTTP failure', async () => {
+    const service = new ThinqService(http as never, config(credentials));
+    const state = {
+      runState: { currentState: 'ERROR' },
+      error: 'TEMPERATURE_SENSOR_ERROR',
+    };
+    http.get.mockReturnValue(response(state));
+    await expect(service.getDryerState('dryer')).resolves.toEqual(state);
+  });
 });
