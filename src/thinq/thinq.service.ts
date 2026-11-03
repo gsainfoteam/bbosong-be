@@ -185,6 +185,8 @@ export class ThinqService {
             'x-country': this.country,
             'x-client-id': this.clientId,
             'x-api-key': this.apiKey,
+            // Required by the official ThinQ Connect SDK for MQTT client APIs.
+            'x-service-phase': 'OP',
             'x-message-id': Buffer.from(
               randomUUID().replace(/-/g, ''),
               'hex',
@@ -205,10 +207,27 @@ export class ThinqService {
       } else if (status === 401 || status === 403) {
         this.retryAt = Date.now() + 900_000;
       }
+      const thinqError = isAxiosError(error)
+        ? (
+            error.response?.data as
+              { error?: { code?: unknown; message?: unknown } } | undefined
+          )?.error
+        : undefined;
+      const code =
+        typeof thinqError?.code === 'string' ||
+        typeof thinqError?.code === 'number'
+          ? String(thinqError.code)
+          : undefined;
+      const message =
+        typeof thinqError?.message === 'string' &&
+        thinqError.message.length <= 200 &&
+        !thinqError.message.includes(this.token ?? '\0')
+          ? thinqError.message
+          : undefined;
       // Axios errors contain request headers, including the PAT. Never propagate them.
       throw new ServiceUnavailableException(
         status
-          ? `ThinQ request failed (HTTP ${status}).`
+          ? `ThinQ request failed (HTTP ${status}${code ? ` ${code}` : ''}${message ? `: ${message}` : ''}).`
           : 'ThinQ request failed.',
       );
     }

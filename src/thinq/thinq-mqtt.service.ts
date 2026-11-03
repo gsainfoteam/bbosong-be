@@ -164,15 +164,23 @@ export class ThinqMqttService implements OnModuleInit, OnModuleDestroy {
     if (!clientId) {
       throw new Error('ThinQ client id is missing.');
     }
-    const host = await this.thinqService.getMqttHost();
-    await this.thinqService.registerMqttClient();
+    const host = await this.withConnectStep('GET /route', () =>
+      this.thinqService.getMqttHost(),
+    );
+    await this.withConnectStep('POST /client', () =>
+      this.thinqService.registerMqttClient(),
+    );
     const { privateKeyPem, csrBody } = this.createMqttIdentity();
-    const issued = await this.thinqService.issueMqttCertificate(csrBody);
+    const issued = await this.withConnectStep('POST /client/certificate', () =>
+      this.thinqService.issueMqttCertificate(csrBody),
+    );
     const topic = issued.subscriptions[0];
     if (!topic) {
       throw new Error('ThinQ MQTT subscription topic is missing.');
     }
-    const ca = await this.downloadAmazonRootCa();
+    const ca = await this.withConnectStep('download Amazon Root CA', () =>
+      this.downloadAmazonRootCa(),
+    );
     if (this.stopped) return;
 
     await new Promise<void>((resolve, reject) => {
@@ -230,9 +238,26 @@ export class ThinqMqttService implements OnModuleInit, OnModuleDestroy {
 
     // New MQTT session: re-register device event subscriptions.
     this.lastEventRenewAt = 0;
-    await this.refreshEventSubscriptions();
-    await this.snapshotMappedDryers();
+    await this.withConnectStep('refresh event subscriptions', () =>
+      this.refreshEventSubscriptions(),
+    );
+    await this.withConnectStep('snapshot mapped dryers', () =>
+      this.snapshotMappedDryers(),
+    );
     this.logger.log('ThinQ MQTT connected.');
+  }
+
+  private async withConnectStep<T>(
+    step: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await run();
+    } catch (error: unknown) {
+      throw new Error(`ThinQ MQTT ${step} failed: ${formatError(error)}`, {
+        cause: error,
+      });
+    }
   }
 
   private scheduleReconnect(): void {
