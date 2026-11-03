@@ -9,6 +9,7 @@ import { MachineService } from './machine.service';
 import { MachineConnectivityService } from './machine-connectivity.service';
 import { ShlinkService } from './shlink.service';
 import { ThinqModule } from '../thinq/thinq.module';
+import { ThinqMqttService } from '../thinq/thinq-mqtt.service';
 import { ThinqPollingService } from './thinq-polling.service';
 
 @Module({
@@ -36,6 +37,7 @@ import { ThinqPollingService } from './thinq-polling.service';
     MachineService,
     ShlinkService,
     MachineConnectivityService,
+    ThinqMqttService,
     ThinqPollingService,
   ],
   exports: [MachineService],

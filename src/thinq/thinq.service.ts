@@ -19,6 +19,11 @@ export type ThinqDryerState = {
   timer?: { remainHour?: number; remainMinute?: number };
 };
 
+export type ThinqMqttCertificate = {
+  certificatePem: string;
+  subscriptions: string[];
+};
+
 // Regional servers and read-only fields from the official ThinQ Connect OpenAPI:
 // https://smartsolution.developer.lge.com/ko/apiManage/thinq_connect
 const THINQ_API_SERVERS = [
@@ -26,6 +31,13 @@ const THINQ_API_SERVERS = [
   'https://api-aic.lgthinq.com',
   'https://api-eic.lgthinq.com',
 ];
+
+const MQTT_CLIENT_BODY = {
+  type: 'MQTT',
+  'service-code': 'SVC202',
+  'device-type': '607',
+  allowExist: true,
+} as const;
 
 @Injectable()
 export class ThinqService {
@@ -36,6 +48,7 @@ export class ThinqService {
   private readonly baseUrl: string;
   private retryAt = 0;
   private rateLimitBackoffMs = 60_000;
+  /** Sparse REST reconcile interval for DRY machines (MQTT is primary). */
   readonly pollIntervalMs: number;
 
   constructor(
@@ -51,13 +64,13 @@ export class ThinqService {
       THINQ_API_SERVERS[0],
     );
     const interval = Number(
-      configService.get('THINQ_POLL_INTERVAL_SECONDS', 60),
+      configService.get('THINQ_POLL_INTERVAL_SECONDS', 600),
     );
-    // A conservative local minimum; the published OpenAPI has no numeric quota.
+    // Reconcile-only cadence; MQTT carries live updates. OpenAPI has no numeric quota.
     this.pollIntervalMs =
-      Number.isFinite(interval) && interval >= 60 && interval <= 86_400
+      Number.isFinite(interval) && interval >= 300 && interval <= 86_400
         ? interval * 1000
-        : 60_000;
+        : 600_000;
   }
 
   get enabled(): boolean {
@@ -71,8 +84,12 @@ export class ThinqService {
     );
   }
 
+  get thinqClientId(): string | undefined {
+    return this.clientId;
+  }
+
   async getDevices(): Promise<ThinqDevice[]> {
-    const response = await this.get<ThinqDevice[]>('/devices');
+    const response = await this.request<ThinqDevice[]>('GET', '/devices');
     if (
       !Array.isArray(response) ||
       response.some((device) => typeof device?.deviceId !== 'string')
@@ -83,7 +100,8 @@ export class ThinqService {
   }
 
   async getDryerState(deviceId: string): Promise<ThinqDryerState> {
-    const response = await this.get<ThinqDryerState>(
+    const response = await this.request<ThinqDryerState>(
+      'GET',
       `/devices/${encodeURIComponent(deviceId)}/state`,
     );
     if (!response || typeof response !== 'object' || Array.isArray(response)) {
@@ -92,7 +110,63 @@ export class ThinqService {
     return response;
   }
 
-  private async get<T>(path: string): Promise<T> {
+  async getMqttHost(): Promise<string> {
+    const route = await this.request<{ mqttServer?: string }>('GET', '/route');
+    const server = route?.mqttServer;
+    if (typeof server !== 'string' || !server) {
+      throw new ServiceUnavailableException('Invalid ThinQ MQTT route.');
+    }
+    return server.replace(/^mqtts:\/\//, '').split(':', 1)[0];
+  }
+
+  async registerMqttClient(): Promise<void> {
+    await this.request('POST', '/client', MQTT_CLIENT_BODY);
+  }
+
+  async unregisterMqttClient(): Promise<void> {
+    await this.request('DELETE', '/client', MQTT_CLIENT_BODY);
+  }
+
+  async issueMqttCertificate(csr: string): Promise<ThinqMqttCertificate> {
+    const response = await this.request<{
+      result?: { certificatePem?: string; subscriptions?: string[] };
+    }>('POST', '/client/certificate', {
+      'service-code': 'SVC202',
+      csr,
+    });
+    const certificatePem = response?.result?.certificatePem;
+    const subscriptions = response?.result?.subscriptions;
+    if (
+      typeof certificatePem !== 'string' ||
+      !certificatePem ||
+      !Array.isArray(subscriptions) ||
+      typeof subscriptions[0] !== 'string'
+    ) {
+      throw new ServiceUnavailableException('Invalid ThinQ MQTT certificate.');
+    }
+    return { certificatePem, subscriptions };
+  }
+
+  async subscribeDeviceEvent(deviceId: string): Promise<void> {
+    await this.request(
+      'POST',
+      `/event/${encodeURIComponent(deviceId)}/subscribe`,
+      { expire: { unit: 'HOUR', timer: 4464 } },
+    );
+  }
+
+  async unsubscribeDeviceEvent(deviceId: string): Promise<void> {
+    await this.request(
+      'DELETE',
+      `/event/${encodeURIComponent(deviceId)}/unsubscribe`,
+    );
+  }
+
+  private async request<T>(
+    method: 'GET' | 'POST' | 'DELETE',
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
     if (!this.enabled) {
       throw new ServiceUnavailableException('ThinQ integration is disabled.');
     }
@@ -101,7 +175,10 @@ export class ThinqService {
     }
     try {
       const { data } = await firstValueFrom(
-        this.httpService.get<{ response: T }>(`${this.baseUrl}${path}`, {
+        this.httpService.request<{ response: T }>({
+          method,
+          url: `${this.baseUrl}${path}`,
+          data: body,
           headers: {
             Authorization: `Bearer ${this.token}`,
             'x-country': this.country,

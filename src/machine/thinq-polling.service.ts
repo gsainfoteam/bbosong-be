@@ -5,7 +5,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { MachineType } from 'generated/prisma/client';
+import { MachineStatus, MachineType } from 'generated/prisma/client';
 import { formatError } from '../common/utils/format-error.util';
 import { ThinqService } from '../thinq/thinq.service';
 import { MachineService } from './machine.service';
@@ -20,6 +20,7 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
   private stopped = false;
   private deviceIds?: Set<string>;
   private deviceListUpdatedAt = 0;
+  private initialSnapshotDone = false;
 
   constructor(
     private readonly thinqService: ThinqService,
@@ -50,7 +51,7 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
     if (this.polling) return this.polling;
     this.polling = this.refresh()
       .catch((error: unknown) => {
-        this.logger.error(`Failed to poll ThinQ: ${formatError(error)}`);
+        this.logger.error(`Failed to reconcile ThinQ: ${formatError(error)}`);
       })
       .finally(() => {
         this.polling = undefined;
@@ -69,6 +70,7 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
       this.deviceListUpdatedAt = Date.now();
     }
     const machines = await this.machineRepository.getMachines();
+    const fullSnapshot = !this.initialSnapshotDone;
     for (const machine of machines) {
       if (this.stopped) return;
       if (
@@ -76,6 +78,10 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
         !machine.thinqDeviceId ||
         !this.deviceIds.has(machine.thinqDeviceId)
       ) {
+        continue;
+      }
+      // After the startup snapshot, REST only reconciles dryers already in use.
+      if (!fullSnapshot && machine.status !== MachineStatus.DRY) {
         continue;
       }
       try {
@@ -90,9 +96,10 @@ export class ThinqPollingService implements OnModuleInit, OnModuleDestroy {
         );
       } catch (error: unknown) {
         this.logger.error(
-          `Failed to poll ThinQ machine ${machine.uuid}: ${formatError(error)}`,
+          `Failed to reconcile ThinQ machine ${machine.uuid}: ${formatError(error)}`,
         );
       }
     }
+    this.initialSnapshotDone = true;
   }
 }
