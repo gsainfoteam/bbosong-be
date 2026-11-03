@@ -28,9 +28,11 @@ it('sends offline alerts only to active administrators with existing push subscr
     user: { findMany },
   } as never);
   const sendWebPushToUser = jest.fn().mockResolvedValue(undefined);
-  const service = new NotificationService(repository, {
-    sendWebPushToUser,
-  } as never);
+  const service = new NotificationService(
+    repository,
+    { sendWebPushToUser } as never,
+    {} as never,
+  );
   await service.notifyMachineOffline({
     location: Location.B,
     gender: Gender.FEMALE,
@@ -60,6 +62,7 @@ it('sends dryer error alerts over the same web-push channel as completion', asyn
     {
       sendWebPushToUser,
     } as never,
+    {} as never,
   );
   await service.notifyMachineError('user-1', {
     location: Location.A,
@@ -70,5 +73,95 @@ it('sends dryer error alerts over the same web-push channel as completion', asyn
     title: '건조기 오류 알림 🧺',
     body: 'A동 3번 건조기에 오류가 발생했습니다. 기기를 확인해 주세요.',
     url: '/',
+  });
+});
+
+describe('laundry room availability subscription', () => {
+  const room = [Location.A, Gender.MALE, MachineType.WASHER] as const;
+  const notificationRepository = {
+    createLaundryRoomSubscription: jest.fn(),
+    deleteLaundryRoomSubscriptionsByUuids: jest.fn(),
+    getLaundryRoomSubscribers: jest.fn(),
+  };
+  const webPushService = { sendWebPushToUser: jest.fn() };
+  const machineRepository = { countAvailableMachines: jest.fn() };
+  let service: NotificationService;
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    service = new NotificationService(
+      notificationRepository as never,
+      webPushService as never,
+      machineRepository as never,
+    );
+    notificationRepository.createLaundryRoomSubscription.mockResolvedValue({
+      uuid: 'sub-1',
+    });
+  });
+
+  it('rejects with 409 when a machine is already available', async () => {
+    machineRepository.countAvailableMachines.mockResolvedValue(1);
+    await expect(
+      service.createLaundryRoomSubscription('user-1', ...room),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { errorCode: 'LAUNDRY_ROOM_ALREADY_AVAILABLE' },
+    });
+    expect(
+      notificationRepository.createLaundryRoomSubscription,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('subscribes when no machine is available', async () => {
+    machineRepository.countAvailableMachines.mockResolvedValue(0);
+    await expect(
+      service.createLaundryRoomSubscription('user-1', ...room),
+    ).resolves.toEqual({ uuid: 'sub-1' });
+    expect(machineRepository.countAvailableMachines).toHaveBeenCalledWith(
+      ...room,
+    );
+    expect(
+      notificationRepository.deleteLaundryRoomSubscriptionsByUuids,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('rolls back the subscription when a machine frees up during insert', async () => {
+    machineRepository.countAvailableMachines
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1);
+    await expect(
+      service.createLaundryRoomSubscription('user-1', ...room),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(
+      notificationRepository.deleteLaundryRoomSubscriptionsByUuids,
+    ).toHaveBeenCalledWith(['sub-1']);
+  });
+
+  it('skips notification when no machine is actually available', async () => {
+    notificationRepository.getLaundryRoomSubscribers.mockResolvedValue([
+      { uuid: 'sub-1', userUuid: 'user-1' },
+    ]);
+    machineRepository.countAvailableMachines.mockResolvedValue(0);
+    await service.notifyLaundryRoomAvailable(...room);
+    expect(webPushService.sendWebPushToUser).not.toHaveBeenCalled();
+    expect(
+      notificationRepository.deleteLaundryRoomSubscriptionsByUuids,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('keeps subscriptions whose push failed for the next event', async () => {
+    notificationRepository.getLaundryRoomSubscribers.mockResolvedValue([
+      { uuid: 'sub-1', userUuid: 'user-1' },
+      { uuid: 'sub-2', userUuid: 'user-2' },
+    ]);
+    machineRepository.countAvailableMachines.mockResolvedValue(1);
+    webPushService.sendWebPushToUser
+      .mockRejectedValueOnce(new Error('push failed'))
+      .mockResolvedValueOnce(undefined);
+    await service.notifyLaundryRoomAvailable(...room);
+    expect(webPushService.sendWebPushToUser).toHaveBeenCalledTimes(2);
+    expect(
+      notificationRepository.deleteLaundryRoomSubscriptionsByUuids,
+    ).toHaveBeenCalledWith(['sub-2']);
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, HttpStatus, Injectable } from '@nestjs/common';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import { SubscribeReqDto } from './dto/req/subscribe-req.dto';
 import {
@@ -10,6 +10,7 @@ import {
 import { WebPushService } from './services/web-push.service';
 import { PrismaTransaction } from '@lib/database';
 import { Trace } from '@gsainfoteam/nest-observability';
+import { MachineRepository } from '@lib/database/repositories/machine.repository';
 
 @Injectable()
 @Trace()
@@ -17,6 +18,7 @@ export class NotificationService {
   constructor(
     private readonly notificationRepository: NotificationRepository,
     private readonly webPushService: WebPushService,
+    private readonly machineRepository: MachineRepository,
   ) {}
 
   async registerPush(
@@ -43,12 +45,54 @@ export class NotificationService {
     gender: Gender,
     type: MachineType,
   ) {
-    return await this.notificationRepository.createLaundryRoomSubscription(
-      userUuid,
+    await this.ensureLaundryRoomUnavailable(location, gender, type);
+
+    const subscription =
+      await this.notificationRepository.createLaundryRoomSubscription(
+        userUuid,
+        location,
+        gender,
+        type,
+      );
+
+    // A machine may have freed up between the check and the insert; its
+    // availability notification could then have missed this subscription.
+    if (
+      (await this.machineRepository.countAvailableMachines(
+        location,
+        gender,
+        type,
+      )) > 0
+    ) {
+      await this.notificationRepository.deleteLaundryRoomSubscriptionsByUuids([
+        subscription.uuid,
+      ]);
+      this.throwLaundryRoomAlreadyAvailable();
+    }
+
+    return subscription;
+  }
+
+  private async ensureLaundryRoomUnavailable(
+    location: Location,
+    gender: Gender,
+    type: MachineType,
+  ): Promise<void> {
+    const count = await this.machineRepository.countAvailableMachines(
       location,
       gender,
       type,
     );
+    if (count > 0) this.throwLaundryRoomAlreadyAvailable();
+  }
+
+  private throwLaundryRoomAlreadyAvailable(): never {
+    throw new ConflictException({
+      statusCode: HttpStatus.CONFLICT,
+      error: 'Conflict',
+      message: 'An available machine already exists in this laundry room.',
+      errorCode: 'LAUNDRY_ROOM_ALREADY_AVAILABLE',
+    });
   }
 
   async getUserLaundryRoomSubscriptions(userUuid: string) {
@@ -124,6 +168,14 @@ export class NotificationService {
 
     if (subscribers.length === 0) return;
 
+    // Skip when the freed machine is disabled/deleted or got taken right away.
+    const availableCount = await this.machineRepository.countAvailableMachines(
+      location,
+      gender,
+      type,
+    );
+    if (availableCount === 0) return;
+
     const typeName = this.machineTypeName(type);
     const payload = {
       title: '빈 기기 발생 알림 🧺',
@@ -131,16 +183,19 @@ export class NotificationService {
       url: '/',
     };
 
-    await Promise.all(
+    // One failed push must not block the others.
+    const results = await Promise.allSettled(
       subscribers.map((sub) =>
         this.webPushService.sendWebPushToUser(sub.userUuid, payload),
       ),
     );
 
-    await this.notificationRepository.deleteAllLaundryRoomSubscribers(
-      location,
-      gender,
-      type,
+    // Delete only what was notified so failed sends and subscriptions created
+    // meanwhile survive for the next availability event.
+    await this.notificationRepository.deleteLaundryRoomSubscriptionsByUuids(
+      subscribers
+        .filter((_, i) => results[i].status === 'fulfilled')
+        .map((sub) => sub.uuid),
     );
   }
 

@@ -416,6 +416,18 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     if (machine.macAddress) {
       this.machineStatusesByMacAddress.set(machine.macAddress, machine.status);
     }
+
+    if (previous && !previous.isAvailable && machine.isAvailable) {
+      await this.dispatchNotification(
+        () =>
+          this.notificationService.notifyLaundryRoomAvailable(
+            machine.location,
+            machine.gender,
+            machine.type,
+          ),
+        `laundry room availability notification for machine ${uuid}`,
+      );
+    }
   }
 
   async updateThinqDryerState(

@@ -10,6 +10,7 @@ import {
 import { DatabaseService } from '@lib/database/database.service';
 import {
   Gender,
+  Location,
   Machine,
   MachinePower,
   MachineStatus,
@@ -28,6 +29,13 @@ import { Trace } from '@gsainfoteam/nest-observability';
 
 const MACHINE_POWER_QUERY_MAX_COUNT = 5000;
 
+// A machine is free when it is enabled and has no open usage session.
+const AVAILABLE_MACHINE_WHERE = {
+  deletedAt: null,
+  isAvailable: true,
+  usages: { none: { endedAt: null } },
+} satisfies Prisma.MachineWhereInput;
+
 @Loggable()
 @Injectable()
 @Trace()
@@ -41,14 +49,7 @@ export class MachineRepository {
     const unusedGroups = await this.databaseService.machine
       .groupBy({
         by: ['location', 'gender', 'type'],
-        where: {
-          deletedAt: null,
-          gender: gender,
-          isAvailable: true,
-          usages: {
-            none: { endedAt: null },
-          },
-        },
+        where: { ...AVAILABLE_MACHINE_WHERE, gender },
         _count: {
           uuid: true,
         },
@@ -70,6 +71,25 @@ export class MachineRepository {
       type: group.type,
       unusedCount: group._count.uuid,
     }));
+  }
+
+  async countAvailableMachines(
+    location: Location,
+    gender: Gender,
+    type: MachineType,
+  ): Promise<number> {
+    return await this.databaseService.machine
+      .count({ where: { ...AVAILABLE_MACHINE_WHERE, location, gender, type } })
+      .catch((error) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          this.logger.error(
+            `countAvailableMachines prisma error: ${error.message}`,
+          );
+          throw new InternalServerErrorException('Database Error');
+        }
+        this.logger.error(`countAvailableMachines error: ${error}`);
+        throw new InternalServerErrorException('Unknown Error');
+      });
   }
 
   async createMachine(data: CreateMachineReqDto): Promise<Machine> {
@@ -105,7 +125,7 @@ export class MachineRepository {
 
     const machines = await this.databaseService
       .$transaction(async (tx) => {
-        const created = await tx.machine.createManyAndReturn({
+        return await tx.machine.createManyAndReturn({
           data: Array.from({ length: itemCount }, (_, i) => {
             const currentIndex = data.startIndex + i;
 
@@ -118,8 +138,6 @@ export class MachineRepository {
             };
           }),
         });
-
-        return created;
       })
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
