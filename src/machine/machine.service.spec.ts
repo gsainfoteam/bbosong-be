@@ -400,6 +400,28 @@ describe('MachineService access and registration', () => {
     ).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    [false, true, 1],
+    [true, true, 0],
+    [true, false, 0],
+  ])(
+    'notifies laundry room subscribers only when isAvailable goes %s -> %s',
+    async (before, after, calls) => {
+      machineRepository.getMachine.mockResolvedValue({
+        ...machine,
+        isAvailable: before,
+      });
+      machineRepository.updateMachine.mockResolvedValue({
+        ...machine,
+        isAvailable: after,
+      });
+      await service.updateMachine(machineUuid, { isAvailable: after });
+      expect(
+        notificationService.notifyLaundryRoomAvailable,
+      ).toHaveBeenCalledTimes(calls);
+    },
+  );
+
   describe('ThinQ dryer lifecycle', () => {
     beforeEach(() => {
       machineRepository.updateThinqDryerState.mockResolvedValue(1);

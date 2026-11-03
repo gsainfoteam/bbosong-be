@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiOkResponse,
   ApiOperation,
   ApiUnauthorizedResponse,
@@ -74,7 +75,7 @@ export class NotificationController {
   @ApiOperation({
     summary: 'Subscribe to laundry room availability',
     description:
-      'Subscribe to get notified when a machine of specified location, gender, and type becomes available.',
+      'Subscribe to get notified when a machine of specified location, gender, and type becomes available. Rejected with 409 when one is already available.',
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
@@ -82,6 +83,10 @@ export class NotificationController {
     type: SuccessResDto,
     description:
       'Successfully subscribed to laundry room availability notification.',
+  })
+  @ApiConflictResponse({
+    description:
+      'An available machine already exists in this laundry room (errorCode: LAUNDRY_ROOM_ALREADY_AVAILABLE).',
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async subscribeLaundryRoom(

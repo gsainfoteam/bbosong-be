@@ -176,19 +176,11 @@ export class NotificationRepository {
     );
   }
 
-  async deleteAllLaundryRoomSubscribers(
-    location: Location,
-    gender: Gender,
-    type: MachineType,
-  ) {
+  async deleteLaundryRoomSubscriptionsByUuids(uuids: string[]) {
     return this.run(
-      'deleteAllLaundryRoomSubscribers',
+      'deleteLaundryRoomSubscriptionsByUuids',
       this.databaseService.laundryRoomSubscription.deleteMany({
-        where: {
-          location,
-          gender,
-          type,
-        },
+        where: { uuid: { in: uuids } },
       }),
     );
   }
