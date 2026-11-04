@@ -38,8 +38,8 @@ import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 import { ShlinkService } from './shlink.service';
 import type { ThinqDryerState } from '../thinq/thinq.service';
 
-const MACHINE_ON_POWER_THRESHOLD_WATTS = 10;
-const MACHINE_ON_DURATION_MS = 180_000;
+const MACHINE_ON_POWER_THRESHOLD_WATTS = 4;
+const MACHINE_ON_DURATION_MS = 60_000;
 const MATTER_POWER_UNITS_PER_WATT = 1000;
 
 @Loggable()
