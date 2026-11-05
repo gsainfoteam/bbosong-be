@@ -290,8 +290,8 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async getMachines(): Promise<Machine[]> {
-    return await this.machineRepository.getMachines();
+  async getMachines(): Promise<MachineWithUsage[]> {
+    return await this.machineRepository.getMachinesWithUsage();
   }
 
   async ensureMachineLink(machine: Machine): Promise<Machine> {

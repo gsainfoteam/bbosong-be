@@ -163,6 +163,11 @@ describe('Machine usage history (PostgreSQL)', () => {
     expect(
       (await machines.getMachineWithUsage(machineUuid))?.currentUsage,
     ).toEqual(starts[0]);
+    expect(
+      (await machines.getMachinesWithUsage()).find(
+        (item) => item.uuid === machineUuid,
+      )?.currentUsage,
+    ).toEqual(starts[0]);
 
     await usages.finishUsingMachine(machineUuid);
     expect(await prisma.usingMachine.count({ where: { machineUuid } })).toBe(2);
@@ -439,6 +444,9 @@ describe('Machine usage history (PostgreSQL)', () => {
       ).toEqual(power);
 
       expect(await machines.getMachines()).not.toContainEqual(
+        expect.objectContaining({ uuid: machine.uuid }),
+      );
+      expect(await machines.getMachinesWithUsage()).not.toContainEqual(
         expect.objectContaining({ uuid: machine.uuid }),
       );
       expect(await machines.getMachine(machine.uuid)).toBeNull();

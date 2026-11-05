@@ -63,6 +63,7 @@ describe('MachineService access and registration', () => {
     getMachineWithUsage: jest.fn(),
     getMachineWithUsageByShortCode: jest.fn(),
     getMachines: jest.fn(),
+    getMachinesWithUsage: jest.fn(),
     getMachineTypeByMacAddress: jest.fn(),
     updateMachine: jest.fn(),
     updateThinqDryerState: jest.fn(),
@@ -102,6 +103,38 @@ describe('MachineService access and registration', () => {
     notificationService.notifyMachineCompletion.mockResolvedValue(undefined);
     notificationService.notifyMachineError.mockResolvedValue(undefined);
     notificationService.notifyLaundryRoomAvailable.mockResolvedValue(undefined);
+  });
+
+  describe('getMachines', () => {
+    it('returns machines with currentUsage for the list API', async () => {
+      const startedAt = new Date('2026-11-01T00:00:00.000Z');
+      const withUsage = {
+        ...machine,
+        status: MachineStatus.DRY,
+        currentUsage: {
+          uuid: 'usage',
+          machineUuid,
+          userUuid,
+          notifyOnCompletion: true,
+          startedAt,
+          endedAt: null,
+        },
+      };
+      const idle = {
+        ...machine,
+        uuid: '00000000-0000-4000-8000-000000000099',
+        status: MachineStatus.IDLE,
+        currentUsage: null,
+      };
+      machineRepository.getMachinesWithUsage.mockResolvedValue([
+        withUsage,
+        idle,
+      ]);
+
+      await expect(service.getMachines()).resolves.toEqual([withUsage, idle]);
+      expect(machineRepository.getMachinesWithUsage).toHaveBeenCalled();
+      expect(machineRepository.getMachines).not.toHaveBeenCalled();
+    });
   });
 
   describe.each([
