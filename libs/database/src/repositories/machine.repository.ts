@@ -173,6 +173,30 @@ export class MachineRepository {
       });
   }
 
+  async getMachinesWithUsage(): Promise<MachineWithUsage[]> {
+    return await this.databaseService.machine
+      .findMany({
+        where: { deletedAt: null },
+        orderBy: [
+          { location: 'asc' },
+          { gender: 'asc' },
+          { type: 'asc' },
+          { index: 'asc' },
+        ],
+        include: { usages: { where: { endedAt: null }, take: 1 } },
+      })
+      .then((machines) =>
+        machines.map(({ usages, ...details }) => ({
+          ...details,
+          currentUsage: usages[0] ?? null,
+        })),
+      )
+      .catch((error) => {
+        this.logger.error(`getMachinesWithUsage error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
+  }
+
   async getMachine(uuid: string): Promise<Machine | null> {
     return await this.databaseService.machine
       .findUnique({
