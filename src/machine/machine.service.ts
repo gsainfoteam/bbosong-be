@@ -439,31 +439,40 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       typeof state.runState?.currentState === 'string'
         ? state.runState.currentState
         : null;
-    // Local lifecycle policy: paused/cooling/wrinkle-care cycles still occupy a dryer.
-    // Errors, reservations and unknown states do not imply completion.
+    // Local lifecycle policy: paused/cooling/detecting cycles still occupy a dryer.
+    // Wrinkle-care is post-dry and treated as available. Errors, reservations and
+    // unknown states do not imply completion.
     const status =
       currentState &&
-      ['RUNNING', 'DETECTING', 'COOLING', 'PAUSE', 'WRINKLE_CARE'].includes(
-        currentState,
-      )
+      ['RUNNING', 'DETECTING', 'COOLING', 'PAUSE'].includes(currentState)
         ? MachineStatus.DRY
         : currentState &&
-            ['END', 'POWER_OFF', 'SLEEP', 'INITIAL'].includes(currentState)
+            [
+              'END',
+              'POWER_OFF',
+              'SLEEP',
+              'INITIAL',
+              'WRINKLE_CARE',
+            ].includes(currentState)
           ? MachineStatus.IDLE
           : null;
     const hour = state.timer?.remainHour;
     const minute = state.timer?.remainMinute;
+    // DETECTING is load/time sensing; ThinQ often reports 0:00 which must not
+    // surface as "0 minutes left".
     const remainingMinutes =
-      typeof hour === 'number' &&
-      typeof minute === 'number' &&
-      Number.isInteger(hour) &&
-      Number.isInteger(minute) &&
-      hour >= 0 &&
-      minute >= 0 &&
-      minute < 60 &&
-      hour * 60 + minute <= 2_147_483_647
-        ? hour * 60 + minute
-        : null;
+      currentState === 'DETECTING'
+        ? null
+        : typeof hour === 'number' &&
+            typeof minute === 'number' &&
+            Number.isInteger(hour) &&
+            Number.isInteger(minute) &&
+            hour >= 0 &&
+            minute >= 0 &&
+            minute < 60 &&
+            hour * 60 + minute <= 2_147_483_647
+          ? hour * 60 + minute
+          : null;
     // ThinQ Dryer profile: runState.currentState ERROR is an appliance fault.
     // Compare against the stored snapshot so repeated polls do not re-alert.
     const previousState =

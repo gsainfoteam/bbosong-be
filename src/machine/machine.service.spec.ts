@@ -503,7 +503,7 @@ describe('MachineService access and registration', () => {
       );
     });
 
-    it.each(['RUNNING', 'DETECTING', 'COOLING', 'PAUSE', 'WRINKLE_CARE'])(
+    it.each(['RUNNING', 'COOLING', 'PAUSE'])(
       'treats %s as occupied and records remaining time',
       async (currentState) => {
         await service.updateThinqDryerState(machineUuid, 'device', {
@@ -528,7 +528,27 @@ describe('MachineService access and registration', () => {
       },
     );
 
-    it.each(['END', 'POWER_OFF', 'SLEEP', 'INITIAL'])(
+    it('treats DETECTING as occupied without remaining time', async () => {
+      await service.updateThinqDryerState(machineUuid, 'device', {
+        runState: { currentState: 'DETECTING' },
+        timer: { remainHour: 0, remainMinute: 0 },
+      });
+      expect(machineRepository.updateThinqDryerState).toHaveBeenCalledWith(
+        machineUuid,
+        'device',
+        'DETECTING',
+        null,
+        MachineStatus.DRY,
+      );
+      expect(usingMachineRepository.createUsingMachine).toHaveBeenCalledWith(
+        machineUuid,
+        undefined,
+        true,
+      );
+      expect(usingMachineRepository.finishUsingMachine).not.toHaveBeenCalled();
+    });
+
+    it.each(['END', 'POWER_OFF', 'SLEEP', 'INITIAL', 'WRINKLE_CARE'])(
       'closes the usage on %s',
       async (currentState) => {
         await service.updateThinqDryerState(machineUuid, 'device', {
