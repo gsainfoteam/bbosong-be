@@ -12,9 +12,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_INCLUSIVE_DAYS = 90;
 
 @ValidatorConstraint({ name: 'dailySessionStatsRange', async: false })
-export class DailySessionStatsRangeConstraint
-  implements ValidatorConstraintInterface
-{
+export class DailySessionStatsRangeConstraint implements ValidatorConstraintInterface {
   validate(_: unknown, args: ValidationArguments): boolean {
     const { from, to } = args.object as GetDailySessionStatsReqDto;
     if (!DATE_RE.test(from ?? '') || !DATE_RE.test(to ?? '')) return false;
