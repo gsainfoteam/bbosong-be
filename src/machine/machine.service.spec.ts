@@ -76,6 +76,7 @@ describe('MachineService access and registration', () => {
     enableMachineNotification: jest.fn(),
     getUsingMachineByMachineUuid: jest.fn(),
     createUsingMachine: jest.fn(),
+    countDailySessionsByRegistration: jest.fn(),
   };
   let service: MachineService;
   const notificationService = {
@@ -873,6 +874,24 @@ describe('MachineService access and registration', () => {
       });
 
       expect(usingMachineRepository.createUsingMachine).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getDailySessionStats', () => {
+    it('delegates to UsingMachineRepository', async () => {
+      const rows = [
+        { date: '2026-11-10', registeredCount: 1, unregisteredCount: 2 },
+      ];
+      usingMachineRepository.countDailySessionsByRegistration = jest
+        .fn()
+        .mockResolvedValue(rows);
+
+      await expect(
+        service.getDailySessionStats('2026-11-10', '2026-11-10'),
+      ).resolves.toEqual(rows);
+      expect(
+        usingMachineRepository.countDailySessionsByRegistration,
+      ).toHaveBeenCalledWith('2026-11-10', '2026-11-10');
     });
   });
 });

@@ -30,6 +30,8 @@ import { User } from 'generated/prisma/client';
 import { MachineService } from './machine.service';
 import { MachineConnectivityService } from './machine-connectivity.service';
 import { GetMachineByShortlinkReqDto } from './dto/req/get-machine-by-shortlink-req.dto';
+import { GetDailySessionStatsReqDto } from './dto/req/get-daily-session-stats-req.dto';
+import { GetDailySessionStatsResDto } from './dto/res/get-daily-session-stats-res.dto';
 import { GetLaundryRoomStatusReqDto } from './dto/req/get-laundry-room-status-req.dto';
 import { GetLaundryRoomStatusResDto } from './dto/res/get-laundry-room-status-res.dto';
 import {
@@ -118,6 +120,21 @@ export class MachineController {
     @Query() query: GetLaundryRoomStatusReqDto,
   ): Promise<GetLaundryRoomStatusResDto[]> {
     return await this.machineService.laundryRoomStatusByGender(query.gender);
+  }
+
+  @Get('stats/sessions/daily')
+  @ApiOperation({
+    summary: 'Daily registered vs unregistered session counts',
+    description:
+      'Returns per-KST-day counts of UsingMachine sessions started in the range. Empty days are included as zeros. Admin only.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(AdminGuard)
+  @ApiOkResponse({ type: GetDailySessionStatsResDto, isArray: true })
+  async getDailySessionStats(
+    @Query() query: GetDailySessionStatsReqDto,
+  ): Promise<GetDailySessionStatsResDto[]> {
+    return this.machineService.getDailySessionStats(query.from, query.to);
   }
 
   @Post()

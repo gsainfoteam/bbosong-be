@@ -627,6 +627,22 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  async getDailySessionStats(
+    from: string,
+    to: string,
+  ): Promise<
+    Array<{
+      date: string;
+      registeredCount: number;
+      unregisteredCount: number;
+    }>
+  > {
+    return this.usingMachineRepository.countDailySessionsByRegistration(
+      from,
+      to,
+    );
+  }
+
   async unlinkUserFromMachine(
     userUuid: string,
     machineUuid: string,

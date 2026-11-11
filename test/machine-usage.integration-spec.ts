@@ -722,4 +722,49 @@ describe('Machine usage history (PostgreSQL)', () => {
       );
     });
   });
+
+  describe('daily session registration stats', () => {
+    it('buckets by KST day, fills gaps, and splits registered vs unregistered', async () => {
+      const machine = await machines.createMachine({
+        location: Location.A,
+        gender: Gender.FEMALE,
+        type: MachineType.WASHER,
+        index: 99,
+      });
+
+      await prisma.usingMachine.createMany({
+        data: [
+          {
+            machineUuid: machine.uuid,
+            userUuid,
+            startedAt: new Date('2020-01-09T15:30:00.000Z'),
+            endedAt: new Date('2020-01-09T16:00:00.000Z'),
+          },
+          {
+            machineUuid: machine.uuid,
+            userUuid: null,
+            startedAt: new Date('2020-01-10T14:59:59.000Z'),
+            endedAt: new Date('2020-01-10T15:30:00.000Z'),
+          },
+          {
+            machineUuid: machine.uuid,
+            userUuid,
+            startedAt: new Date('2020-01-11T15:00:00.000Z'),
+            endedAt: new Date('2020-01-11T16:00:00.000Z'),
+          },
+        ],
+      });
+
+      const rows = await usages.countDailySessionsByRegistration(
+        '2020-01-10',
+        '2020-01-12',
+      );
+
+      expect(rows).toEqual([
+        { date: '2020-01-10', registeredCount: 1, unregisteredCount: 1 },
+        { date: '2020-01-11', registeredCount: 0, unregisteredCount: 0 },
+        { date: '2020-01-12', registeredCount: 1, unregisteredCount: 0 },
+      ]);
+    });
+  });
 });
