@@ -53,6 +53,7 @@ describe('GET /auth/users', () => {
       studentNumber: '20260001',
       gender: Gender.MALE,
       role: Role.USER,
+      machineUsageCount: 3,
       pushSubscriptions: [
         {
           uuid: 'device-1',
@@ -70,6 +71,7 @@ describe('GET /auth/users', () => {
       studentNumber: '20260002',
       gender: Gender.FEMALE,
       role: Role.USER,
+      machineUsageCount: 0,
       pushSubscriptions: [],
     },
   ];
@@ -129,7 +131,7 @@ describe('GET /auth/users', () => {
     expect(findUsersWithPushSubscriptions).not.toHaveBeenCalled();
   });
 
-  it('returns all device subscriptions, ISO timestamps, and users without devices to admins', async () => {
+  it('returns usage session counts, device subscriptions, ISO timestamps, and users without devices to admins', async () => {
     await request(app.getHttpServer())
       .get('/auth/users')
       .set('Authorization', 'Bearer admin')
