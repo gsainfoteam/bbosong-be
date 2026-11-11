@@ -40,6 +40,8 @@ describe('UsingMachineRepository.countDailySessionsByRegistration', () => {
     const sql = strings.join(' ');
     expect(sql).toContain('generate_series');
     expect(sql).toContain('Asia/Seoul');
+    expect(sql).toContain("::date - interval '9 hours'");
+    expect(sql).toContain("::date + interval '1 day' - interval '9 hours'");
     expect(sql).toContain('user_uuid IS NOT NULL');
     expect(sql).toContain('user_uuid IS NULL');
     expect(values).toEqual([
