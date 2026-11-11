@@ -31,6 +31,12 @@ export class UserPushSubscriptionResDto {
 
 export class GetUsersResDto extends UserResDto {
   @ApiProperty({
+    description:
+      'Total number of washer/dryer usage sessions the user has registered for (open and completed; unlinked sessions are excluded)',
+  })
+  machineUsageCount: number;
+
+  @ApiProperty({
     type: [UserPushSubscriptionResDto],
     description:
       'Currently registered push subscriptions; an empty array means no registered devices',

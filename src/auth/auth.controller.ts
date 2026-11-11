@@ -131,7 +131,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Get users and their push subscriptions (Admin only)',
     description:
-      'Retrieve all non-deleted users with their currently registered push devices, registration times, and last successful push notification send times.',
+      'Retrieve all non-deleted users with their washer/dryer usage session counts, currently registered push devices, registration times, and last successful push notification send times.',
   })
   @ApiBearerAuth('user')
   @UseGuards(AdminGuard)

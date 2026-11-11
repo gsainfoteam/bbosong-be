@@ -34,6 +34,11 @@ export class UserRepository {
           studentNumber: true,
           gender: true,
           role: true,
+          _count: {
+            select: {
+              usingMachines: true,
+            },
+          },
           pushSubscriptions: {
             orderBy: [{ createdAt: 'desc' }, { uuid: 'asc' }],
             select: {
@@ -45,6 +50,12 @@ export class UserRepository {
           },
         },
       })
+      .then((users) =>
+        users.map(({ _count, ...user }) => ({
+          ...user,
+          machineUsageCount: _count.usingMachines,
+        })),
+      )
       .catch((error: unknown) => {
         this.logger.error(
           `findUsersWithPushSubscriptions error: ${String(error)}`,
