@@ -313,4 +313,59 @@ export class UsingMachineRepository {
 
     return result.count;
   }
+
+  async countDailySessionsByRegistration(
+    from: string,
+    to: string,
+  ): Promise<
+    Array<{
+      date: string;
+      registeredCount: number;
+      unregisteredCount: number;
+    }>
+  > {
+    const rows = await this.databaseService.$queryRaw<
+      Array<{
+        date: string;
+        registeredCount: bigint | number;
+        unregisteredCount: bigint | number;
+      }>
+    >`
+      WITH days AS (
+        SELECT generate_series(
+          ${from}::date,
+          ${to}::date,
+          interval '1 day'
+        )::date AS day
+      ),
+      stats AS (
+        SELECT
+          ((started_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Seoul')::date AS day,
+          COUNT(*) FILTER (WHERE user_uuid IS NOT NULL) AS registered_count,
+          COUNT(*) FILTER (WHERE user_uuid IS NULL) AS unregistered_count
+        FROM using_machine
+        WHERE started_at >= (${from}::timestamp AT TIME ZONE 'Asia/Seoul')
+          AND started_at < ((${to}::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul')
+        GROUP BY 1
+      )
+      SELECT
+        to_char(d.day, 'YYYY-MM-DD') AS date,
+        COALESCE(s.registered_count, 0) AS "registeredCount",
+        COALESCE(s.unregistered_count, 0) AS "unregisteredCount"
+      FROM days d
+      LEFT JOIN stats s ON s.day = d.day
+      ORDER BY d.day
+    `.catch((error) => {
+      this.logger.error(
+        `countDailySessionsByRegistration error: ${String(error)}`,
+      );
+      throw new InternalServerErrorException('Database Error');
+    });
+
+    return rows.map((row) => ({
+      date: row.date,
+      registeredCount: Number(row.registeredCount),
+      unregisteredCount: Number(row.unregisteredCount),
+    }));
+  }
 }
