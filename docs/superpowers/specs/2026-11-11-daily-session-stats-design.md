@@ -20,6 +20,7 @@ Add an admin endpoint that returns, for each calendar day in a requested range, 
 | Rule | Choice |
 |---|---|
 | Session source | `using_machine` rows |
+| Duration filter | Completed only (`ended_at IS NOT NULL`) and `ended_at - started_at >= 30 minutes` (`MACHINE_REREGISTRATION_MIN_DURATION_MS`) |
 | Registered | current `user_uuid IS NOT NULL` |
 | Unregistered | current `user_uuid IS NULL` |
 | Day bucket | KST (`Asia/Seoul`), based on `started_at` |
@@ -68,7 +69,7 @@ Length equals number of calendar days from `from` through `to` inclusive.
 Prisma `$queryRaw` with PostgreSQL `generate_series` + left join aggregate (no schema change).
 
 1. Build KST day series from `from` through `to`.
-2. Aggregate sessions where `started_at` falls in that KST day range.
+2. Aggregate sessions where `started_at` falls in that KST day range and duration is at least 30 minutes with `ended_at` set.
 3. Split counts with `COUNT(*) FILTER (WHERE user_uuid IS NOT NULL)` / `IS NULL`.
 4. Left-join so days with no sessions still return zeros.
 
@@ -90,6 +91,9 @@ stats AS (
   FROM using_machine
   WHERE started_at >= (${from}::timestamp AT TIME ZONE 'Asia/Seoul')
     AND started_at < ((${to}::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul')
+    AND ended_at IS NOT NULL
+    AND (EXTRACT(EPOCH FROM (ended_at - started_at)) * 1000)
+      >= ${MACHINE_REREGISTRATION_MIN_DURATION_MS}
   GROUP BY 1
 )
 SELECT

@@ -300,8 +300,11 @@ async countDailySessionsByRegistration(
           COUNT(*) FILTER (WHERE user_uuid IS NOT NULL) AS registered_count,
           COUNT(*) FILTER (WHERE user_uuid IS NULL) AS unregistered_count
         FROM using_machine
-        WHERE started_at >= (${from}::timestamp AT TIME ZONE 'Asia/Seoul')
-          AND started_at < ((${to}::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul')
+        WHERE started_at >= (${from}::date - interval '9 hours')
+          AND started_at < (${to}::date + interval '1 day' - interval '9 hours')
+          AND ended_at IS NOT NULL
+          AND (EXTRACT(EPOCH FROM (ended_at - started_at)) * 1000)
+            >= ${MACHINE_REREGISTRATION_MIN_DURATION_MS}
         GROUP BY 1
       )
       SELECT

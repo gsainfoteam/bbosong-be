@@ -126,7 +126,7 @@ export class MachineController {
   @ApiOperation({
     summary: 'Daily registered vs unregistered session counts',
     description:
-      'Returns per-KST-day counts of UsingMachine sessions started in the range. Empty days are included as zeros. Admin only.',
+      'Returns per-KST-day counts of UsingMachine sessions started in the range that lasted at least 30 minutes (ended_at set). Empty days are included as zeros. Admin only.',
   })
   @ApiBearerAuth('user')
   @UseGuards(AdminGuard)

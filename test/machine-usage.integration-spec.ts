@@ -752,6 +752,20 @@ describe('Machine usage history (PostgreSQL)', () => {
             startedAt: new Date('2020-01-11T15:00:00.000Z'),
             endedAt: new Date('2020-01-11T16:00:00.000Z'),
           },
+          // Short completed session — excluded (< 30 minutes)
+          {
+            machineUuid: machine.uuid,
+            userUuid,
+            startedAt: new Date('2020-01-09T16:00:00.000Z'),
+            endedAt: new Date('2020-01-09T16:10:00.000Z'),
+          },
+          // Open session — excluded (ended_at null)
+          {
+            machineUuid: machine.uuid,
+            userUuid: null,
+            startedAt: new Date('2020-01-09T17:00:00.000Z'),
+            endedAt: null,
+          },
         ],
       });
 

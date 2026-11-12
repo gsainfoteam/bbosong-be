@@ -346,6 +346,9 @@ export class UsingMachineRepository {
         FROM using_machine
         WHERE started_at >= (${from}::date - interval '9 hours')
           AND started_at < (${to}::date + interval '1 day' - interval '9 hours')
+          AND ended_at IS NOT NULL
+          AND (EXTRACT(EPOCH FROM (ended_at - started_at)) * 1000)
+            >= ${MACHINE_REREGISTRATION_MIN_DURATION_MS}
         GROUP BY 1
       )
       SELECT

@@ -1,3 +1,4 @@
+import { MACHINE_REREGISTRATION_MIN_DURATION_MS } from '@lib/database/constants/machine-registration';
 import { UsingMachineRepository } from '@lib/database/repositories/using-machine.repository';
 import type { DatabaseService } from '@lib/database/database.service';
 
@@ -42,6 +43,8 @@ describe('UsingMachineRepository.countDailySessionsByRegistration', () => {
     expect(sql).toContain('Asia/Seoul');
     expect(sql).toContain("::date - interval '9 hours'");
     expect(sql).toContain("::date + interval '1 day' - interval '9 hours'");
+    expect(sql).toContain('ended_at IS NOT NULL');
+    expect(sql).toContain('EXTRACT(EPOCH FROM (ended_at - started_at))');
     expect(sql).toContain('user_uuid IS NOT NULL');
     expect(sql).toContain('user_uuid IS NULL');
     expect(values).toEqual([
@@ -49,6 +52,7 @@ describe('UsingMachineRepository.countDailySessionsByRegistration', () => {
       '2026-11-12',
       '2026-11-10',
       '2026-11-12',
+      MACHINE_REREGISTRATION_MIN_DURATION_MS,
     ]);
     expect(rows).toEqual([
       { date: '2026-11-10', registeredCount: 1, unregisteredCount: 1 },
