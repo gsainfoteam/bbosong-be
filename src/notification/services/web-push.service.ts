@@ -42,11 +42,12 @@ export class WebPushService implements OnModuleInit {
     return endpoint.length > 20 ? `...${endpoint.slice(-15)}` : endpoint;
   }
 
-  // Send Web Push notification to all active devices of a user
+  // Send Web Push notification to all active devices of a user.
+  // Resolves true only if at least one device actually accepted the push.
   async sendWebPushToUser(
     userUuid: string,
     payload: WebPushPayload,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const subscriptions =
       await this.notificationRepository.getUserPushSubscriptions(userUuid);
 
@@ -54,9 +55,10 @@ export class WebPushService implements OnModuleInit {
       this.logger.debug(
         `No active push subscriptions found for user: ${this.maskUuid(userUuid)}`,
       );
-      return;
+      return false;
     }
 
+    let delivered = false;
     const pushPayload = JSON.stringify(payload);
 
     await Promise.all(
@@ -74,6 +76,7 @@ export class WebPushService implements OnModuleInit {
           await webpush.sendNotification(pushSubscription, pushPayload, {
             urgency: 'high',
           });
+          delivered = true;
 
           try {
             await this.notificationRepository.markPushSubscriptionActivated(
@@ -116,5 +119,7 @@ export class WebPushService implements OnModuleInit {
         }
       }),
     );
+
+    return delivered;
   }
 }

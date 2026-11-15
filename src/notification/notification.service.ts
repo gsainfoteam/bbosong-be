@@ -1,4 +1,9 @@
-import { ConflictException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  HttpStatus,
+  Injectable,
+} from '@nestjs/common';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import { SubscribeReqDto } from './dto/req/subscribe-req.dto';
 import {
@@ -11,6 +16,8 @@ import { WebPushService } from './services/web-push.service';
 import { PrismaTransaction } from '@lib/database';
 import { Trace } from '@gsainfoteam/nest-observability';
 import { MachineRepository } from '@lib/database/repositories/machine.repository';
+
+const MAX_STATS_DAYS = 90;
 
 @Injectable()
 @Trace()
@@ -47,7 +54,7 @@ export class NotificationService {
   ) {
     await this.ensureLaundryRoomUnavailable(location, gender, type);
 
-    const subscription =
+    const { subscription, logUuid } =
       await this.notificationRepository.createLaundryRoomSubscription(
         userUuid,
         location,
@@ -64,9 +71,10 @@ export class NotificationService {
         type,
       )) > 0
     ) {
-      await this.notificationRepository.deleteLaundryRoomSubscriptionsByUuids([
+      await this.notificationRepository.rollbackLaundryRoomSubscription(
         subscription.uuid,
-      ]);
+        logUuid,
+      );
       this.throwLaundryRoomAlreadyAvailable();
     }
 
@@ -183,19 +191,47 @@ export class NotificationService {
       url: '/',
     };
 
-    // One failed push must not block the others.
+    // One failed push must not block the others. Each send records its own
+    // completion time so a slow batch cannot shift earlier sends to a later day.
     const results = await Promise.allSettled(
-      subscribers.map((sub) =>
-        this.webPushService.sendWebPushToUser(sub.userUuid, payload),
-      ),
+      subscribers.map(async (sub) => {
+        const delivered = await this.webPushService.sendWebPushToUser(
+          sub.userUuid,
+          payload,
+        );
+        return delivered ? new Date() : null;
+      }),
     );
 
-    // Delete only what was notified so failed sends and subscriptions created
-    // meanwhile survive for the next availability event.
-    await this.notificationRepository.deleteLaundryRoomSubscriptionsByUuids(
-      subscribers
-        .filter((_, i) => results[i].status === 'fulfilled')
-        .map((sub) => sub.uuid),
+    // Log and delete only what was actually delivered so failed sends and
+    // subscriptions created meanwhile survive for the next availability event.
+    const notified = subscribers.flatMap((sub, i) => {
+      const result = results[i];
+      return result.status === 'fulfilled' && result.value
+        ? [{ ...sub, notifiedAt: result.value }]
+        : [];
+    });
+    await this.notificationRepository.completeLaundryRoomNotifications(
+      notified,
+    );
+  }
+
+  async getDailyLaundryRoomNotificationStats(from: string, to: string) {
+    const days =
+      (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+        86_400_000 +
+      1;
+    if (!(days >= 1)) {
+      throw new BadRequestException('`from` must not be after `to`.');
+    }
+    if (days > MAX_STATS_DAYS) {
+      throw new BadRequestException(
+        `The range must not exceed ${MAX_STATS_DAYS} days.`,
+      );
+    }
+    return await this.notificationRepository.countDailyLaundryRoomStats(
+      from,
+      to,
     );
   }
 

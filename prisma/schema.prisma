@@ -67,12 +67,14 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  usingMachines            UsingMachine[]
-  userRefreshTokens        UserRefreshToken[]
-  userConsents             UserConsent[]
-  auditLogs                AuditLog[]
-  pushSubscriptions        UserPushSubscription[]
-  laundryRoomSubscriptions LaundryRoomSubscription[]
+  usingMachines               UsingMachine[]
+  userRefreshTokens           UserRefreshToken[]
+  userConsents                UserConsent[]
+  auditLogs                   AuditLog[]
+  pushSubscriptions           UserPushSubscription[]
+  laundryRoomSubscriptions    LaundryRoomSubscription[]
+  laundryRoomNotificationLogs LaundryRoomNotificationLog[]
+  laundryRoomSubscriptionLogs LaundryRoomSubscriptionLog[]
 
   @@map("user")
 }
@@ -212,4 +214,35 @@ model LaundryRoomSubscription {
   @@index([userUuid])
   @@index([location, gender, type])
   @@map("laundry_room_subscription")
+}
+
+model LaundryRoomNotificationLog {
+  uuid         String      @id @default(uuid()) @db.Uuid
+  userUuid     String      @map("user_uuid") @db.Uuid
+  location     Location    @map("location")
+  gender       Gender      @map("gender")
+  type         MachineType @map("type")
+  subscribedAt DateTime    @map("subscribed_at")
+  notifiedAt   DateTime    @default(now()) @map("notified_at")
+
+  user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
+
+  @@index([userUuid])
+  @@index([notifiedAt])
+  @@map("laundry_room_notification_log")
+}
+
+model LaundryRoomSubscriptionLog {
+  uuid         String      @id @default(uuid()) @db.Uuid
+  userUuid     String      @map("user_uuid") @db.Uuid
+  location     Location    @map("location")
+  gender       Gender      @map("gender")
+  type         MachineType @map("type")
+  subscribedAt DateTime    @default(now()) @map("subscribed_at")
+
+  user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
+
+  @@index([userUuid])
+  @@index([subscribedAt])
+  @@map("laundry_room_subscription_log")
 }

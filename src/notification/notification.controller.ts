@@ -5,16 +5,20 @@ import {
   Get,
   Headers,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiConflictResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { UserGuard } from '../auth/guard/user.guard';
+import { AdminGuard } from '../auth/guard/admin.guard';
 import { GetUser } from '../auth/decorator/get-user.decorator';
 import { User } from 'generated/prisma/client';
 import { NotificationService } from './notification.service';
@@ -22,6 +26,8 @@ import { SubscribeReqDto } from './dto/req/subscribe-req.dto';
 import { SubscribeLaundryRoomReqDto } from './dto/req/subscribe-laundry-room-req.dto';
 import { UnregisterPushReqDto } from './dto/req/unregister-push-req.dto';
 import { GetLaundryRoomSubscriptionResDto } from './dto/res/get-laundry-room-subscription-res.dto';
+import { DailyLaundryRoomNotificationStatResDto } from './dto/res/daily-laundry-room-notification-stat-res.dto';
+import { GetDailyLaundryRoomNotificationStatsReqDto } from './dto/req/get-daily-laundry-room-notification-stats-req.dto';
 import { SuccessResDto } from '../common/dto/res/success-res.dto';
 
 @Controller('notification')
@@ -122,6 +128,31 @@ export class NotificationController {
   ): Promise<GetLaundryRoomSubscriptionResDto[]> {
     return await this.notificationService.getUserLaundryRoomSubscriptions(
       user.uuid,
+    );
+  }
+
+  @Get('laundry-room/stats/daily')
+  @ApiOperation({
+    summary:
+      'Get daily laundry room availability notification stats (Admin only)',
+    description:
+      'For each KST calendar day in [from, to], the number of availability-notification requests and notifications actually sent, each with its distinct-user count. Days without notifications are included with zeros. The range is limited to 90 days.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(AdminGuard)
+  @ApiOkResponse({
+    type: DailyLaundryRoomNotificationStatResDto,
+    isArray: true,
+  })
+  @ApiBadRequestResponse({ description: 'Invalid or too long date range.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  @ApiForbiddenResponse({ description: 'User is not an admin.' })
+  async getDailyLaundryRoomNotificationStats(
+    @Query() query: GetDailyLaundryRoomNotificationStatsReqDto,
+  ): Promise<DailyLaundryRoomNotificationStatResDto[]> {
+    return await this.notificationService.getDailyLaundryRoomNotificationStats(
+      query.from,
+      query.to,
     );
   }
 
