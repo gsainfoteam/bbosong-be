@@ -110,37 +110,53 @@ export class NotificationRepository {
     );
   }
 
+  /**
+   * Upserts the subscription and records the request in the log atomically.
+   * `subscribedAt` is written explicitly (UTC) instead of relying on the
+   * column default, which would follow the DB session time zone.
+   */
   async createLaundryRoomSubscription(
     userUuid: string,
     location: Location,
     gender: Gender,
     type: MachineType,
   ) {
-    return this.run(
+    const now = new Date();
+    const [subscription, log] = await this.run(
       'createLaundryRoomSubscription',
-      this.databaseService.laundryRoomSubscription.upsert({
-        where: {
-          userUuid_location_gender_type: { userUuid, location, gender, type },
-        },
-        create: { userUuid, location, gender, type },
-        update: {
-          createdAt: new Date(),
-        },
-      }),
+      this.databaseService.$transaction([
+        this.databaseService.laundryRoomSubscription.upsert({
+          where: {
+            userUuid_location_gender_type: { userUuid, location, gender, type },
+          },
+          create: { userUuid, location, gender, type },
+          update: {
+            createdAt: now,
+          },
+        }),
+        this.databaseService.laundryRoomSubscriptionLog.create({
+          data: { userUuid, location, gender, type, subscribedAt: now },
+        }),
+      ]),
     );
+    return { subscription, logUuid: log.uuid };
   }
 
-  async logLaundryRoomSubscription(
-    userUuid: string,
-    location: Location,
-    gender: Gender,
-    type: MachineType,
+  /** Undoes `createLaundryRoomSubscription`, subscription and log together. */
+  async rollbackLaundryRoomSubscription(
+    subscriptionUuid: string,
+    logUuid: string,
   ) {
     return this.run(
-      'logLaundryRoomSubscription',
-      this.databaseService.laundryRoomSubscriptionLog.create({
-        data: { userUuid, location, gender, type },
-      }),
+      'rollbackLaundryRoomSubscription',
+      this.databaseService.$transaction([
+        this.databaseService.laundryRoomSubscription.deleteMany({
+          where: { uuid: subscriptionUuid },
+        }),
+        this.databaseService.laundryRoomSubscriptionLog.deleteMany({
+          where: { uuid: logUuid },
+        }),
+      ]),
     );
   }
 
@@ -190,15 +206,6 @@ export class NotificationRepository {
     );
   }
 
-  async deleteLaundryRoomSubscriptionsByUuids(uuids: string[]) {
-    return this.run(
-      'deleteLaundryRoomSubscriptionsByUuids',
-      this.databaseService.laundryRoomSubscription.deleteMany({
-        where: { uuid: { in: uuids } },
-      }),
-    );
-  }
-
   /**
    * Records each notified subscription in the log and removes it atomically,
    * so a subscription is never deleted without leaving a history row.
@@ -211,8 +218,8 @@ export class NotificationRepository {
       gender: Gender;
       type: MachineType;
       createdAt: Date;
+      notifiedAt: Date;
     }[],
-    notifiedAt: Date,
   ) {
     if (subscriptions.length === 0) return;
     return this.run(
@@ -225,7 +232,7 @@ export class NotificationRepository {
             gender: sub.gender,
             type: sub.type,
             subscribedAt: sub.createdAt,
-            notifiedAt,
+            notifiedAt: sub.notifiedAt,
           })),
         }),
         this.databaseService.laundryRoomSubscription.deleteMany({

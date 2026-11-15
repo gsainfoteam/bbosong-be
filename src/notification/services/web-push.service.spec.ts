@@ -56,10 +56,12 @@ describe('Web push activation timestamps', () => {
   });
 
   it('records successful sends for each device', async () => {
-    await service.sendWebPushToUser('user', {
-      title: 'Done',
-      body: 'Laundry complete',
-    });
+    await expect(
+      service.sendWebPushToUser('user', {
+        title: 'Done',
+        body: 'Laundry complete',
+      }),
+    ).resolves.toBe(true);
     expect(repository.markPushSubscriptionActivated.mock.calls).toEqual([
       ['device-1', sentAt],
       ['device-2', sentAt],
@@ -111,9 +113,22 @@ describe('Web push activation timestamps', () => {
         title: 'Done',
         body: 'Laundry complete',
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(true);
     expect(repository.markPushSubscriptionActivated).toHaveBeenCalledTimes(2);
     expect(sendNotification).toHaveBeenCalledTimes(2);
     expect(repository.unregisterPush).not.toHaveBeenCalled();
+  });
+
+  it('reports no delivery when every device fails or none are registered', async () => {
+    sendNotification.mockRejectedValue(
+      Object.assign(new Error('Unavailable'), { statusCode: 503 }),
+    );
+    await expect(
+      service.sendWebPushToUser('user', { title: 'Done', body: 'x' }),
+    ).resolves.toBe(false);
+    repository.getUserPushSubscriptions.mockResolvedValue([]);
+    await expect(
+      service.sendWebPushToUser('user', { title: 'Done', body: 'x' }),
+    ).resolves.toBe(false);
   });
 });

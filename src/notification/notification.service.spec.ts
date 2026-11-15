@@ -80,8 +80,7 @@ describe('laundry room availability subscription', () => {
   const room = [Location.A, Gender.MALE, MachineType.WASHER] as const;
   const notificationRepository = {
     createLaundryRoomSubscription: jest.fn(),
-    logLaundryRoomSubscription: jest.fn(),
-    deleteLaundryRoomSubscriptionsByUuids: jest.fn(),
+    rollbackLaundryRoomSubscription: jest.fn(),
     getLaundryRoomSubscribers: jest.fn(),
     completeLaundryRoomNotifications: jest.fn(),
   };
@@ -96,11 +95,9 @@ describe('laundry room availability subscription', () => {
       webPushService as never,
       machineRepository as never,
     );
-    notificationRepository.logLaundryRoomSubscription.mockResolvedValue(
-      undefined,
-    );
     notificationRepository.createLaundryRoomSubscription.mockResolvedValue({
-      uuid: 'sub-1',
+      subscription: { uuid: 'sub-1' },
+      logUuid: 'log-1',
     });
   });
 
@@ -126,11 +123,8 @@ describe('laundry room availability subscription', () => {
       ...room,
     );
     expect(
-      notificationRepository.deleteLaundryRoomSubscriptionsByUuids,
+      notificationRepository.rollbackLaundryRoomSubscription,
     ).not.toHaveBeenCalled();
-    expect(
-      notificationRepository.logLaundryRoomSubscription,
-    ).toHaveBeenCalledWith('user-1', ...room);
   });
 
   it('rolls back the subscription when a machine frees up during insert', async () => {
@@ -141,11 +135,8 @@ describe('laundry room availability subscription', () => {
       service.createLaundryRoomSubscription('user-1', ...room),
     ).rejects.toMatchObject({ status: 409 });
     expect(
-      notificationRepository.deleteLaundryRoomSubscriptionsByUuids,
-    ).toHaveBeenCalledWith(['sub-1']);
-    expect(
-      notificationRepository.logLaundryRoomSubscription,
-    ).not.toHaveBeenCalled();
+      notificationRepository.rollbackLaundryRoomSubscription,
+    ).toHaveBeenCalledWith('sub-1', 'log-1');
   });
 
   it('skips notification when no machine is actually available', async () => {
@@ -168,15 +159,69 @@ describe('laundry room availability subscription', () => {
     machineRepository.countAvailableMachines.mockResolvedValue(1);
     webPushService.sendWebPushToUser
       .mockRejectedValueOnce(new Error('push failed'))
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce(true);
     await service.notifyLaundryRoomAvailable(...room);
     expect(webPushService.sendWebPushToUser).toHaveBeenCalledTimes(2);
     expect(
       notificationRepository.completeLaundryRoomNotifications,
-    ).toHaveBeenCalledWith(
-      [{ uuid: 'sub-2', userUuid: 'user-2' }],
-      expect.any(Date),
-    );
+    ).toHaveBeenCalledWith([
+      {
+        uuid: 'sub-2',
+        userUuid: 'user-2',
+        notifiedAt: expect.any(Date) as Date,
+      },
+    ]);
+  });
+
+  it('keeps subscriptions when no device accepted the push', async () => {
+    notificationRepository.getLaundryRoomSubscribers.mockResolvedValue([
+      { uuid: 'sub-1', userUuid: 'user-1' },
+      { uuid: 'sub-2', userUuid: 'user-2' },
+    ]);
+    machineRepository.countAvailableMachines.mockResolvedValue(1);
+    webPushService.sendWebPushToUser
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    await service.notifyLaundryRoomAvailable(...room);
+    expect(
+      notificationRepository.completeLaundryRoomNotifications,
+    ).toHaveBeenCalledWith([
+      {
+        uuid: 'sub-2',
+        userUuid: 'user-2',
+        notifiedAt: expect.any(Date) as Date,
+      },
+    ]);
+  });
+
+  it('records each push completion time separately', async () => {
+    jest.useFakeTimers();
+    try {
+      notificationRepository.getLaundryRoomSubscribers.mockResolvedValue([
+        { uuid: 'sub-1', userUuid: 'user-1' },
+        { uuid: 'sub-2', userUuid: 'user-2' },
+      ]);
+      machineRepository.countAvailableMachines.mockResolvedValue(1);
+      jest.setSystemTime(new Date('2026-11-15T14:59:59Z'));
+      webPushService.sendWebPushToUser
+        .mockResolvedValueOnce(true)
+        .mockImplementationOnce(async () => {
+          // Let the first send's continuation run before the clock moves.
+          await Promise.resolve();
+          await Promise.resolve();
+          jest.setSystemTime(new Date('2026-11-15T15:00:01Z'));
+          return true;
+        });
+      await service.notifyLaundryRoomAvailable(...room);
+      const [notified] = notificationRepository.completeLaundryRoomNotifications
+        .mock.calls[0] as [{ notifiedAt: Date }[]];
+      expect(notified.map((n) => n.notifiedAt.toISOString())).toEqual([
+        '2026-11-15T14:59:59.000Z',
+        '2026-11-15T15:00:01.000Z',
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('logs and removes subscriptions through the repository after a successful push', async () => {
@@ -192,11 +237,13 @@ describe('laundry room availability subscription', () => {
       subscription,
     ]);
     machineRepository.countAvailableMachines.mockResolvedValue(1);
-    webPushService.sendWebPushToUser.mockResolvedValue(undefined);
+    webPushService.sendWebPushToUser.mockResolvedValue(true);
     await service.notifyLaundryRoomAvailable(...room);
     expect(
       notificationRepository.completeLaundryRoomNotifications,
-    ).toHaveBeenCalledWith([subscription], expect.any(Date));
+    ).toHaveBeenCalledWith([
+      { ...subscription, notifiedAt: expect.any(Date) as Date },
+    ]);
   });
 });
 
@@ -211,19 +258,17 @@ it('writes a notification log row and deletes the subscription in one transactio
   } as never);
   const createdAt = new Date('2026-11-14T00:00:00Z');
   const notifiedAt = new Date('2026-11-15T00:00:00Z');
-  await repository.completeLaundryRoomNotifications(
-    [
-      {
-        uuid: 'sub-1',
-        userUuid: 'user-1',
-        location: Location.A,
-        gender: Gender.MALE,
-        type: MachineType.WASHER,
-        createdAt,
-      },
-    ],
-    notifiedAt,
-  );
+  await repository.completeLaundryRoomNotifications([
+    {
+      uuid: 'sub-1',
+      userUuid: 'user-1',
+      location: Location.A,
+      gender: Gender.MALE,
+      type: MachineType.WASHER,
+      createdAt,
+      notifiedAt,
+    },
+  ]);
   expect(createMany).toHaveBeenCalledWith({
     data: [
       {
@@ -266,4 +311,30 @@ describe('daily laundry room notification stats', () => {
     );
     expect(countDaily).toHaveBeenCalledWith('2026-01-01', '2026-03-31');
   });
+});
+
+it('writes the subscription and its log row in one transaction with an explicit UTC time', async () => {
+  const upsert = jest.fn().mockReturnValue('upsert');
+  const create = jest.fn().mockReturnValue('log');
+  const $transaction = jest
+    .fn()
+    .mockResolvedValue([{ uuid: 'sub-1' }, { uuid: 'log-1' }]);
+  const repository = new NotificationRepository({
+    laundryRoomSubscription: { upsert },
+    laundryRoomSubscriptionLog: { create },
+    $transaction,
+  } as never);
+  await expect(
+    repository.createLaundryRoomSubscription(
+      'user-1',
+      Location.A,
+      Gender.MALE,
+      MachineType.WASHER,
+    ),
+  ).resolves.toEqual({ subscription: { uuid: 'sub-1' }, logUuid: 'log-1' });
+  expect($transaction).toHaveBeenCalledWith(['upsert', 'log']);
+  const { subscribedAt } = (
+    create.mock.calls[0] as [{ data: { subscribedAt: Date } }]
+  )[0].data;
+  expect(subscribedAt).toBeInstanceOf(Date);
 });

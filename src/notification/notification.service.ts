@@ -54,7 +54,7 @@ export class NotificationService {
   ) {
     await this.ensureLaundryRoomUnavailable(location, gender, type);
 
-    const subscription =
+    const { subscription, logUuid } =
       await this.notificationRepository.createLaundryRoomSubscription(
         userUuid,
         location,
@@ -71,18 +71,12 @@ export class NotificationService {
         type,
       )) > 0
     ) {
-      await this.notificationRepository.deleteLaundryRoomSubscriptionsByUuids([
+      await this.notificationRepository.rollbackLaundryRoomSubscription(
         subscription.uuid,
-      ]);
+        logUuid,
+      );
       this.throwLaundryRoomAlreadyAvailable();
     }
-
-    await this.notificationRepository.logLaundryRoomSubscription(
-      userUuid,
-      location,
-      gender,
-      type,
-    );
 
     return subscription;
   }
@@ -197,18 +191,28 @@ export class NotificationService {
       url: '/',
     };
 
-    // One failed push must not block the others.
+    // One failed push must not block the others. Each send records its own
+    // completion time so a slow batch cannot shift earlier sends to a later day.
     const results = await Promise.allSettled(
-      subscribers.map((sub) =>
-        this.webPushService.sendWebPushToUser(sub.userUuid, payload),
-      ),
+      subscribers.map(async (sub) => {
+        const delivered = await this.webPushService.sendWebPushToUser(
+          sub.userUuid,
+          payload,
+        );
+        return delivered ? new Date() : null;
+      }),
     );
 
-    // Log and delete only what was notified so failed sends and subscriptions
-    // created meanwhile survive for the next availability event.
+    // Log and delete only what was actually delivered so failed sends and
+    // subscriptions created meanwhile survive for the next availability event.
+    const notified = subscribers.flatMap((sub, i) => {
+      const result = results[i];
+      return result.status === 'fulfilled' && result.value
+        ? [{ ...sub, notifiedAt: result.value }]
+        : [];
+    });
     await this.notificationRepository.completeLaundryRoomNotifications(
-      subscribers.filter((_, i) => results[i].status === 'fulfilled'),
-      new Date(),
+      notified,
     );
   }
 
