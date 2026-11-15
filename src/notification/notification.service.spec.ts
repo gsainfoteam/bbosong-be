@@ -80,8 +80,10 @@ describe('laundry room availability subscription', () => {
   const room = [Location.A, Gender.MALE, MachineType.WASHER] as const;
   const notificationRepository = {
     createLaundryRoomSubscription: jest.fn(),
+    logLaundryRoomSubscription: jest.fn(),
     deleteLaundryRoomSubscriptionsByUuids: jest.fn(),
     getLaundryRoomSubscribers: jest.fn(),
+    completeLaundryRoomNotifications: jest.fn(),
   };
   const webPushService = { sendWebPushToUser: jest.fn() };
   const machineRepository = { countAvailableMachines: jest.fn() };
@@ -93,6 +95,9 @@ describe('laundry room availability subscription', () => {
       notificationRepository as never,
       webPushService as never,
       machineRepository as never,
+    );
+    notificationRepository.logLaundryRoomSubscription.mockResolvedValue(
+      undefined,
     );
     notificationRepository.createLaundryRoomSubscription.mockResolvedValue({
       uuid: 'sub-1',
@@ -123,6 +128,9 @@ describe('laundry room availability subscription', () => {
     expect(
       notificationRepository.deleteLaundryRoomSubscriptionsByUuids,
     ).not.toHaveBeenCalled();
+    expect(
+      notificationRepository.logLaundryRoomSubscription,
+    ).toHaveBeenCalledWith('user-1', ...room);
   });
 
   it('rolls back the subscription when a machine frees up during insert', async () => {
@@ -135,6 +143,9 @@ describe('laundry room availability subscription', () => {
     expect(
       notificationRepository.deleteLaundryRoomSubscriptionsByUuids,
     ).toHaveBeenCalledWith(['sub-1']);
+    expect(
+      notificationRepository.logLaundryRoomSubscription,
+    ).not.toHaveBeenCalled();
   });
 
   it('skips notification when no machine is actually available', async () => {
@@ -145,7 +156,7 @@ describe('laundry room availability subscription', () => {
     await service.notifyLaundryRoomAvailable(...room);
     expect(webPushService.sendWebPushToUser).not.toHaveBeenCalled();
     expect(
-      notificationRepository.deleteLaundryRoomSubscriptionsByUuids,
+      notificationRepository.completeLaundryRoomNotifications,
     ).not.toHaveBeenCalled();
   });
 
@@ -161,7 +172,98 @@ describe('laundry room availability subscription', () => {
     await service.notifyLaundryRoomAvailable(...room);
     expect(webPushService.sendWebPushToUser).toHaveBeenCalledTimes(2);
     expect(
-      notificationRepository.deleteLaundryRoomSubscriptionsByUuids,
-    ).toHaveBeenCalledWith(['sub-2']);
+      notificationRepository.completeLaundryRoomNotifications,
+    ).toHaveBeenCalledWith(
+      [{ uuid: 'sub-2', userUuid: 'user-2' }],
+      expect.any(Date),
+    );
+  });
+
+  it('logs and removes subscriptions through the repository after a successful push', async () => {
+    const subscription = {
+      uuid: 'sub-1',
+      userUuid: 'user-1',
+      location: Location.A,
+      gender: Gender.MALE,
+      type: MachineType.WASHER,
+      createdAt: new Date('2026-11-14T00:00:00Z'),
+    };
+    notificationRepository.getLaundryRoomSubscribers.mockResolvedValue([
+      subscription,
+    ]);
+    machineRepository.countAvailableMachines.mockResolvedValue(1);
+    webPushService.sendWebPushToUser.mockResolvedValue(undefined);
+    await service.notifyLaundryRoomAvailable(...room);
+    expect(
+      notificationRepository.completeLaundryRoomNotifications,
+    ).toHaveBeenCalledWith([subscription], expect.any(Date));
+  });
+});
+
+it('writes a notification log row and deletes the subscription in one transaction', async () => {
+  const createMany = jest.fn().mockReturnValue('create');
+  const deleteMany = jest.fn().mockReturnValue('delete');
+  const $transaction = jest.fn().mockResolvedValue([]);
+  const repository = new NotificationRepository({
+    laundryRoomNotificationLog: { createMany },
+    laundryRoomSubscription: { deleteMany },
+    $transaction,
+  } as never);
+  const createdAt = new Date('2026-11-14T00:00:00Z');
+  const notifiedAt = new Date('2026-11-15T00:00:00Z');
+  await repository.completeLaundryRoomNotifications(
+    [
+      {
+        uuid: 'sub-1',
+        userUuid: 'user-1',
+        location: Location.A,
+        gender: Gender.MALE,
+        type: MachineType.WASHER,
+        createdAt,
+      },
+    ],
+    notifiedAt,
+  );
+  expect(createMany).toHaveBeenCalledWith({
+    data: [
+      {
+        userUuid: 'user-1',
+        location: Location.A,
+        gender: Gender.MALE,
+        type: MachineType.WASHER,
+        subscribedAt: createdAt,
+        notifiedAt,
+      },
+    ],
+  });
+  expect(deleteMany).toHaveBeenCalledWith({
+    where: { uuid: { in: ['sub-1'] } },
+  });
+  expect($transaction).toHaveBeenCalledWith(['create', 'delete']);
+});
+
+describe('daily laundry room notification stats', () => {
+  const countDaily = jest.fn().mockResolvedValue([]);
+  const service = new NotificationService(
+    { countDailyLaundryRoomStats: countDaily } as never,
+    {} as never,
+    {} as never,
+  );
+
+  it('rejects from after to', async () => {
+    await expect(
+      service.getDailyLaundryRoomNotificationStats('2026-11-15', '2026-11-14'),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('rejects ranges over 90 days and accepts exactly 90', async () => {
+    await expect(
+      service.getDailyLaundryRoomNotificationStats('2026-01-01', '2026-04-01'),
+    ).rejects.toMatchObject({ status: 400 });
+    await service.getDailyLaundryRoomNotificationStats(
+      '2026-01-01',
+      '2026-03-31',
+    );
+    expect(countDaily).toHaveBeenCalledWith('2026-01-01', '2026-03-31');
   });
 });

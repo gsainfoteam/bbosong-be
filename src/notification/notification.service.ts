@@ -1,4 +1,9 @@
-import { ConflictException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  HttpStatus,
+  Injectable,
+} from '@nestjs/common';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import { SubscribeReqDto } from './dto/req/subscribe-req.dto';
 import {
@@ -11,6 +16,8 @@ import { WebPushService } from './services/web-push.service';
 import { PrismaTransaction } from '@lib/database';
 import { Trace } from '@gsainfoteam/nest-observability';
 import { MachineRepository } from '@lib/database/repositories/machine.repository';
+
+const MAX_STATS_DAYS = 90;
 
 @Injectable()
 @Trace()
@@ -69,6 +76,13 @@ export class NotificationService {
       ]);
       this.throwLaundryRoomAlreadyAvailable();
     }
+
+    await this.notificationRepository.logLaundryRoomSubscription(
+      userUuid,
+      location,
+      gender,
+      type,
+    );
 
     return subscription;
   }
@@ -190,12 +204,30 @@ export class NotificationService {
       ),
     );
 
-    // Delete only what was notified so failed sends and subscriptions created
-    // meanwhile survive for the next availability event.
-    await this.notificationRepository.deleteLaundryRoomSubscriptionsByUuids(
-      subscribers
-        .filter((_, i) => results[i].status === 'fulfilled')
-        .map((sub) => sub.uuid),
+    // Log and delete only what was notified so failed sends and subscriptions
+    // created meanwhile survive for the next availability event.
+    await this.notificationRepository.completeLaundryRoomNotifications(
+      subscribers.filter((_, i) => results[i].status === 'fulfilled'),
+      new Date(),
+    );
+  }
+
+  async getDailyLaundryRoomNotificationStats(from: string, to: string) {
+    const days =
+      (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+        86_400_000 +
+      1;
+    if (!(days >= 1)) {
+      throw new BadRequestException('`from` must not be after `to`.');
+    }
+    if (days > MAX_STATS_DAYS) {
+      throw new BadRequestException(
+        `The range must not exceed ${MAX_STATS_DAYS} days.`,
+      );
+    }
+    return await this.notificationRepository.countDailyLaundryRoomStats(
+      from,
+      to,
     );
   }
 

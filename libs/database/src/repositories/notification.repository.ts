@@ -130,6 +130,20 @@ export class NotificationRepository {
     );
   }
 
+  async logLaundryRoomSubscription(
+    userUuid: string,
+    location: Location,
+    gender: Gender,
+    type: MachineType,
+  ) {
+    return this.run(
+      'logLaundryRoomSubscription',
+      this.databaseService.laundryRoomSubscriptionLog.create({
+        data: { userUuid, location, gender, type },
+      }),
+    );
+  }
+
   async deleteLaundryRoomSubscription(
     userUuid: string,
     location: Location,
@@ -182,6 +196,92 @@ export class NotificationRepository {
       this.databaseService.laundryRoomSubscription.deleteMany({
         where: { uuid: { in: uuids } },
       }),
+    );
+  }
+
+  /**
+   * Records each notified subscription in the log and removes it atomically,
+   * so a subscription is never deleted without leaving a history row.
+   */
+  async completeLaundryRoomNotifications(
+    subscriptions: {
+      uuid: string;
+      userUuid: string;
+      location: Location;
+      gender: Gender;
+      type: MachineType;
+      createdAt: Date;
+    }[],
+    notifiedAt: Date,
+  ) {
+    if (subscriptions.length === 0) return;
+    return this.run(
+      'completeLaundryRoomNotifications',
+      this.databaseService.$transaction([
+        this.databaseService.laundryRoomNotificationLog.createMany({
+          data: subscriptions.map((sub) => ({
+            userUuid: sub.userUuid,
+            location: sub.location,
+            gender: sub.gender,
+            type: sub.type,
+            subscribedAt: sub.createdAt,
+            notifiedAt,
+          })),
+        }),
+        this.databaseService.laundryRoomSubscription.deleteMany({
+          where: { uuid: { in: subscriptions.map((sub) => sub.uuid) } },
+        }),
+      ]),
+    );
+  }
+
+  /** Per-KST-day subscription/notification counts for `[from, to]`. */
+  async countDailyLaundryRoomStats(from: string, to: string) {
+    return this.run(
+      'countDailyLaundryRoomStats',
+      this.databaseService.$queryRaw<
+        {
+          date: string;
+          subscriptionCount: number;
+          subscriptionUserCount: number;
+          notificationCount: number;
+          notificationUserCount: number;
+        }[]
+      >`
+        WITH days AS (
+          SELECT generate_series(${from}::date, ${to}::date, '1 day'::interval)::date AS day
+        ),
+        sub AS (
+          SELECT
+            ((subscribed_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Seoul')::date AS day,
+            COUNT(*)::int AS cnt,
+            COUNT(DISTINCT user_uuid)::int AS users
+          FROM laundry_room_subscription_log
+          WHERE subscribed_at >= ((${from}::date)::timestamp AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'UTC'
+            AND subscribed_at < ((${to}::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'UTC'
+          GROUP BY 1
+        ),
+        notif AS (
+          SELECT
+            ((notified_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Seoul')::date AS day,
+            COUNT(*)::int AS cnt,
+            COUNT(DISTINCT user_uuid)::int AS users
+          FROM laundry_room_notification_log
+          WHERE notified_at >= ((${from}::date)::timestamp AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'UTC'
+            AND notified_at < ((${to}::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'UTC'
+          GROUP BY 1
+        )
+        SELECT
+          to_char(d.day, 'YYYY-MM-DD') AS "date",
+          COALESCE(s.cnt, 0) AS "subscriptionCount",
+          COALESCE(s.users, 0) AS "subscriptionUserCount",
+          COALESCE(n.cnt, 0) AS "notificationCount",
+          COALESCE(n.users, 0) AS "notificationUserCount"
+        FROM days d
+        LEFT JOIN sub s ON s.day = d.day
+        LEFT JOIN notif n ON n.day = d.day
+        ORDER BY d.day
+      `,
     );
   }
 
