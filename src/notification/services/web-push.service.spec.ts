@@ -27,7 +27,7 @@ describe('Web push activation timestamps', () => {
     },
   ];
   const repository = {
-    getUserPushSubscriptions: jest.fn(),
+    getUserWebPushSubscriptions: jest.fn(),
     markPushSubscriptionActivated: jest.fn(),
     unregisterPush: jest.fn(),
   };
@@ -37,7 +37,7 @@ describe('Web push activation timestamps', () => {
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(sentAt);
     jest.clearAllMocks();
-    repository.getUserPushSubscriptions.mockResolvedValue(subscriptions);
+    repository.getUserWebPushSubscriptions.mockResolvedValue(subscriptions);
     repository.markPushSubscriptionActivated.mockResolvedValue({ count: 1 });
     repository.unregisterPush.mockResolvedValue({ count: 1 });
     sendNotification.mockResolvedValue({
@@ -126,7 +126,7 @@ describe('Web push activation timestamps', () => {
     await expect(
       service.sendWebPushToUser('user', { title: 'Done', body: 'x' }),
     ).resolves.toBe(false);
-    repository.getUserPushSubscriptions.mockResolvedValue([]);
+    repository.getUserWebPushSubscriptions.mockResolvedValue([]);
     await expect(
       service.sendWebPushToUser('user', { title: 'Done', body: 'x' }),
     ).resolves.toBe(false);

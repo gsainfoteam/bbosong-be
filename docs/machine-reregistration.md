@@ -56,7 +56,7 @@ FE는 종료된 세션의 남은 시간을 0으로 취급한다. `endedAt`은 �
 새 세션은 새 UUID, 확인 시각의 `startedAt`, 새 사용자, `endedAt = null`, `notifyOnCompletion = true`로 생성된다.
 기기 전력·상태는 그대로 유지한다. 기기가 실제로 비었다는 세탁실 구독 알림은 보내지 않는다.
 
-DB 커밋 후 이전 사용자에게 기존 WebPushService로
+DB 커밋 후 이전 사용자에게 Web Push와 FCM(`NotificationService` 팬아웃)으로
 “다른 사용자가 완료를 확인하고 기기를 등록했어요” 안내를 보낸다.
 이 안내는 이전 `notifyOnCompletion` 설정과 무관하게 보낸다.
 기존 모듈과 동일한 best-effort 방식으로, 구독이 없으면 생략하고 전송 실패를 기록한다.

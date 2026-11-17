@@ -43,6 +43,7 @@ export class UserRepository {
             orderBy: [{ createdAt: 'desc' }, { uuid: 'asc' }],
             select: {
               uuid: true,
+              platform: true,
               userAgent: true,
               createdAt: true,
               lastActivatedAt: true,

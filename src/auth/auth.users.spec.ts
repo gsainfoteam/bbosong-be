@@ -6,7 +6,7 @@ import { Request } from 'express';
 import { Strategy } from 'passport';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { Gender, Role } from 'generated/prisma/client';
+import { Gender, PushPlatform, Role } from 'generated/prisma/client';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { GetUsersResDto } from './dto/res/get-users-res.dto';
@@ -57,11 +57,18 @@ describe('GET /auth/users', () => {
       pushSubscriptions: [
         {
           uuid: 'device-1',
+          platform: PushPlatform.WEB,
           userAgent: 'Browser A',
           createdAt,
           lastActivatedAt,
         },
-        { uuid: 'device-2', userAgent: null, createdAt, lastActivatedAt: null },
+        {
+          uuid: 'device-2',
+          platform: PushPlatform.IOS,
+          userAgent: null,
+          createdAt,
+          lastActivatedAt: null,
+        },
       ],
     },
     {

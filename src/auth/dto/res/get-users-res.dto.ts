@@ -1,9 +1,19 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { PushPlatform } from 'generated/prisma/client';
 import { UserResDto } from './user-res.dto';
 
 export class UserPushSubscriptionResDto {
   @ApiProperty({ description: 'The unique UUID of the push subscription' })
   uuid: string;
+
+  @ApiProperty({
+    enum: PushPlatform,
+    enumName: 'PushPlatform',
+    required: false,
+    description:
+      'Delivery channel of the subscription: WEB (Web Push) or IOS/ANDROID (native app via FCM)',
+  })
+  platform?: PushPlatform;
 
   @ApiProperty({
     type: String,

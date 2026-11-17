@@ -11,6 +11,7 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiBody,
   ApiConflictResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
@@ -25,6 +26,8 @@ import { NotificationService } from './notification.service';
 import { SubscribeReqDto } from './dto/req/subscribe-req.dto';
 import { SubscribeLaundryRoomReqDto } from './dto/req/subscribe-laundry-room-req.dto';
 import { UnregisterPushReqDto } from './dto/req/unregister-push-req.dto';
+import { RegisterNativePushReqDto } from './dto/req/register-native-push-req.dto';
+import { UnregisterNativePushReqDto } from './dto/req/unregister-native-push-req.dto';
 import { GetLaundryRoomSubscriptionResDto } from './dto/res/get-laundry-room-subscription-res.dto';
 import { DailyLaundryRoomNotificationStatResDto } from './dto/res/daily-laundry-room-notification-stat-res.dto';
 import { GetDailyLaundryRoomNotificationStatsReqDto } from './dto/req/get-daily-laundry-room-notification-stats-req.dto';
@@ -36,12 +39,13 @@ export class NotificationController {
 
   @Post('register')
   @ApiOperation({
-    summary: 'Register push device',
+    summary: 'Register Web Push device',
     description:
       'Register or update Web Push device subscription credentials for the authenticated user.',
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
+  @ApiBody({ type: SubscribeReqDto })
   @ApiOkResponse({
     type: SuccessResDto,
     description: 'Successfully registered push device.',
@@ -58,12 +62,13 @@ export class NotificationController {
 
   @Delete('unregister')
   @ApiOperation({
-    summary: 'Unregister push device',
+    summary: 'Unregister Web Push device',
     description:
       'Remove a Web Push device subscription belonging to the authenticated user.',
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
+  @ApiBody({ type: UnregisterPushReqDto })
   @ApiOkResponse({
     type: SuccessResDto,
     description: 'Successfully unregistered push device.',
@@ -74,6 +79,57 @@ export class NotificationController {
     @GetUser() user: User,
   ) {
     await this.notificationService.unregisterPush(user.uuid, dto.endpoint);
+    return { success: true };
+  }
+
+  @Post('register/native')
+  @ApiOperation({
+    summary: 'Register native app push device',
+    description:
+      'Register or update an FCM registration token (iOS via APNs, Android) for the authenticated user. Idempotent per token; a token already registered to another account is moved to the authenticated user.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiBody({ type: RegisterNativePushReqDto })
+  @ApiOkResponse({
+    type: SuccessResDto,
+    description: 'Successfully registered native push device.',
+  })
+  @ApiBadRequestResponse({ description: 'Invalid platform or token.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async registerNativePush(
+    @Body() dto: RegisterNativePushReqDto,
+    @Headers('user-agent') userAgent: string | undefined,
+    @GetUser() user: User,
+  ) {
+    await this.notificationService.registerNativePush(
+      user.uuid,
+      dto,
+      userAgent,
+    );
+    return { success: true };
+  }
+
+  @Delete('unregister/native')
+  @ApiOperation({
+    summary: 'Unregister native app push device',
+    description:
+      'Remove an FCM registration token belonging to the authenticated user (call on logout). Succeeds even if the token is unknown or now belongs to another account.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiBody({ type: UnregisterNativePushReqDto })
+  @ApiOkResponse({
+    type: SuccessResDto,
+    description: 'Successfully unregistered native push device.',
+  })
+  @ApiBadRequestResponse({ description: 'Invalid token.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async unregisterNativePush(
+    @Body() dto: UnregisterNativePushReqDto,
+    @GetUser() user: User,
+  ) {
+    await this.notificationService.unregisterNativePush(user.uuid, dto.token);
     return { success: true };
   }
 

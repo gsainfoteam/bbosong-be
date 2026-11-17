@@ -13,6 +13,9 @@ import {
   MachineType,
 } from 'generated/prisma/client';
 import { WebPushService } from './services/web-push.service';
+import { FcmService } from './services/fcm.service';
+import { PushPayload } from './types/push-payload.type';
+import { RegisterNativePushReqDto } from './dto/req/register-native-push-req.dto';
 import { PrismaTransaction } from '@lib/database';
 import { Trace } from '@gsainfoteam/nest-observability';
 import { MachineRepository } from '@lib/database/repositories/machine.repository';
@@ -25,6 +28,7 @@ export class NotificationService {
   constructor(
     private readonly notificationRepository: NotificationRepository,
     private readonly webPushService: WebPushService,
+    private readonly fcmService: FcmService,
     private readonly machineRepository: MachineRepository,
   ) {}
 
@@ -44,6 +48,49 @@ export class NotificationService {
 
   async unregisterPush(userUuid: string, endpoint: string) {
     return await this.notificationRepository.unregisterPush(userUuid, endpoint);
+  }
+
+  async registerNativePush(
+    userUuid: string,
+    dto: RegisterNativePushReqDto,
+    userAgent?: string,
+  ) {
+    return await this.notificationRepository.registerNativePush(
+      userUuid,
+      dto.platform,
+      dto.token,
+      userAgent,
+    );
+  }
+
+  async unregisterNativePush(userUuid: string, token: string) {
+    return await this.notificationRepository.unregisterNativePush(
+      userUuid,
+      token,
+    );
+  }
+
+  /**
+   * Fans a message out to every device of the user over Web Push and FCM.
+   * A failing channel never blocks the other. Resolves true only if at least
+   * one device accepted the push.
+   */
+  private async sendPushToUser(
+    userUuid: string,
+    payload: PushPayload,
+  ): Promise<boolean> {
+    const results = await Promise.allSettled([
+      this.webPushService.sendWebPushToUser(userUuid, payload),
+      this.fcmService.sendFcmToUser(userUuid, payload),
+    ]);
+    const failure = results.find((r) => r.status === 'rejected');
+    const delivered = results.some(
+      (r) => r.status === 'fulfilled' && r.value === true,
+    );
+    // Surface an error only when nothing got through, so callers that retry
+    // later (e.g. laundry-room subscriptions) keep their state.
+    if (!delivered && failure) throw failure.reason;
+    return delivered;
   }
 
   async createLaundryRoomSubscription(
@@ -132,21 +179,23 @@ export class NotificationService {
     machine: Machine,
   ): Promise<void> {
     const typeName = this.machineTypeName(machine.type);
-    const payload = {
+    const payload: PushPayload = {
       title: `${typeName} 완료 알림 🧺`,
       body: `${machine.location}동 ${machine.index}번 ${typeName} 작동이 완료되었습니다. 빨래를 수거해 주세요!`,
       url: '/',
+      data: { type: 'machine-completion', machineUuid: machine.uuid },
     };
 
-    await this.webPushService.sendWebPushToUser(userUuid, payload);
+    await this.sendPushToUser(userUuid, payload);
   }
 
   async notifyMachineError(userUuid: string, machine: Machine): Promise<void> {
     const typeName = this.machineTypeName(machine.type);
-    await this.webPushService.sendWebPushToUser(userUuid, {
+    await this.sendPushToUser(userUuid, {
       title: `${typeName} 오류 알림 🧺`,
       body: `${machine.location}동 ${machine.index}번 ${typeName}에 오류가 발생했습니다. 기기를 확인해 주세요.`,
       url: '/',
+      data: { type: 'machine-error', machineUuid: machine.uuid },
     });
   }
 
@@ -155,10 +204,11 @@ export class NotificationService {
     machine: Machine,
   ): Promise<void> {
     const typeName = this.machineTypeName(machine.type);
-    await this.webPushService.sendWebPushToUser(userUuid, {
+    await this.sendPushToUser(userUuid, {
       title: `${typeName} 사용 종료 알림 🧺`,
       body: `${machine.location}동 ${machine.index}번 ${typeName}: 다른 사용자가 완료를 확인하고 기기를 등록했어요`,
       url: '/',
+      data: { type: 'machine-reregistered', machineUuid: machine.uuid },
     });
   }
 
@@ -185,20 +235,25 @@ export class NotificationService {
     if (availableCount === 0) return;
 
     const typeName = this.machineTypeName(type);
-    const payload = {
+    const payload: PushPayload = {
       title: '빈 기기 발생 알림 🧺',
       body: `${location}동 ${gender === Gender.MALE ? '남성' : '여성'} 세탁실에 빈 ${typeName}가 생겼습니다!`,
       url: '/',
+      // Lets the client identify the laundry-room subscription the server is
+      // about to delete and sync its toggle.
+      data: {
+        type: 'laundry-room-available',
+        location,
+        gender,
+        machineType: type,
+      },
     };
 
     // One failed push must not block the others. Each send records its own
     // completion time so a slow batch cannot shift earlier sends to a later day.
     const results = await Promise.allSettled(
       subscribers.map(async (sub) => {
-        const delivered = await this.webPushService.sendWebPushToUser(
-          sub.userUuid,
-          payload,
-        );
+        const delivered = await this.sendPushToUser(sub.userUuid, payload);
         return delivered ? new Date() : null;
       }),
     );
@@ -241,10 +296,11 @@ export class NotificationService {
     const typeName = this.machineTypeName(machine.type);
     await Promise.all(
       recipients.map(({ uuid }) =>
-        this.webPushService.sendWebPushToUser(uuid, {
+        this.sendPushToUser(uuid, {
           title: '기기 연결 끊김 알림',
           body: `${machine.location}동 ${machine.gender === Gender.MALE ? '남성' : '여성'} 세탁실 ${machine.index}번 ${typeName}의 연결이 끊겼습니다. 기기와 네트워크를 확인해 주세요.`,
           url: '/admin/machines',
+          data: { type: 'machine-offline', machineUuid: machine.uuid },
         }),
       ),
     );
