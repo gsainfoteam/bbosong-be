@@ -16,6 +16,7 @@ jest.mock('@lib/logger', () => ({
 }));
 jest.mock('@lib/database/database.service', () => ({}));
 jest.mock('./services/web-push.service', () => ({}));
+jest.mock('./services/fcm.service', () => ({}));
 jest.mock('generated/prisma/client', () =>
   jest.requireActual<typeof import('../../generated/prisma/enums')>(
     '../../generated/prisma/enums',
@@ -31,9 +32,11 @@ it('sends offline alerts only to active administrators with existing push subscr
   const service = new NotificationService(
     repository,
     { sendWebPushToUser } as never,
+    { sendFcmToUser: jest.fn().mockResolvedValue(false) } as never,
     {} as never,
   );
   await service.notifyMachineOffline({
+    uuid: 'machine-1',
     location: Location.B,
     gender: Gender.FEMALE,
     type: MachineType.DRYER,
@@ -52,6 +55,7 @@ it('sends offline alerts only to active administrators with existing push subscr
     title: '기기 연결 끊김 알림',
     body: 'B동 여성 세탁실 2번 건조기의 연결이 끊겼습니다. 기기와 네트워크를 확인해 주세요.',
     url: '/admin/machines',
+    data: { type: 'machine-offline', machineUuid: 'machine-1' },
   });
 });
 
@@ -62,9 +66,11 @@ it('sends dryer error alerts over the same web-push channel as completion', asyn
     {
       sendWebPushToUser,
     } as never,
+    { sendFcmToUser: jest.fn().mockResolvedValue(false) } as never,
     {} as never,
   );
   await service.notifyMachineError('user-1', {
+    uuid: 'machine-3',
     location: Location.A,
     type: MachineType.DRYER,
     index: 3,
@@ -73,6 +79,7 @@ it('sends dryer error alerts over the same web-push channel as completion', asyn
     title: '건조기 오류 알림 🧺',
     body: 'A동 3번 건조기에 오류가 발생했습니다. 기기를 확인해 주세요.',
     url: '/',
+    data: { type: 'machine-error', machineUuid: 'machine-3' },
   });
 });
 
@@ -85,6 +92,7 @@ describe('laundry room availability subscription', () => {
     completeLaundryRoomNotifications: jest.fn(),
   };
   const webPushService = { sendWebPushToUser: jest.fn() };
+  const fcmService = { sendFcmToUser: jest.fn() };
   const machineRepository = { countAvailableMachines: jest.fn() };
   let service: NotificationService;
 
@@ -93,6 +101,7 @@ describe('laundry room availability subscription', () => {
     service = new NotificationService(
       notificationRepository as never,
       webPushService as never,
+      fcmService as never,
       machineRepository as never,
     );
     notificationRepository.createLaundryRoomSubscription.mockResolvedValue({
@@ -207,8 +216,7 @@ describe('laundry room availability subscription', () => {
         .mockResolvedValueOnce(true)
         .mockImplementationOnce(async () => {
           // Let the first send's continuation run before the clock moves.
-          await Promise.resolve();
-          await Promise.resolve();
+          for (let i = 0; i < 10; i++) await Promise.resolve();
           jest.setSystemTime(new Date('2026-11-15T15:00:01Z'));
           return true;
         });
@@ -293,6 +301,7 @@ describe('daily laundry room notification stats', () => {
     { countDailyLaundryRoomStats: countDaily } as never,
     {} as never,
     {} as never,
+    {} as never,
   );
 
   it('rejects from after to', async () => {
@@ -337,4 +346,133 @@ it('writes the subscription and its log row in one transaction with an explicit 
     create.mock.calls[0] as [{ data: { subscribedAt: Date } }]
   )[0].data;
   expect(subscribedAt).toBeInstanceOf(Date);
+});
+
+describe('push fan-out and device registration', () => {
+  const machine = {
+    uuid: 'machine-1',
+    location: Location.A,
+    gender: Gender.MALE,
+    type: MachineType.WASHER,
+    index: 1,
+  } as Machine;
+  const repository = {
+    registerNativePush: jest.fn(),
+    unregisterNativePush: jest.fn(),
+  };
+  const webPushService = { sendWebPushToUser: jest.fn() };
+  const fcmService = { sendFcmToUser: jest.fn() };
+  let service: NotificationService;
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    service = new NotificationService(
+      repository as never,
+      webPushService as never,
+      fcmService as never,
+      {} as never,
+    );
+  });
+
+  it('sends the same payload over Web Push and FCM', async () => {
+    webPushService.sendWebPushToUser.mockResolvedValue(true);
+    fcmService.sendFcmToUser.mockResolvedValue(true);
+    await service.notifyMachineCompletion('user-1', machine);
+    const payload = {
+      title: '세탁기 완료 알림 🧺',
+      body: 'A동 1번 세탁기 작동이 완료되었습니다. 빨래를 수거해 주세요!',
+      url: '/',
+      data: { type: 'machine-completion', machineUuid: 'machine-1' },
+    };
+    expect(webPushService.sendWebPushToUser).toHaveBeenCalledWith(
+      'user-1',
+      payload,
+    );
+    expect(fcmService.sendFcmToUser).toHaveBeenCalledWith('user-1', payload);
+  });
+
+  it('still reaches FCM when Web Push throws, and vice versa', async () => {
+    webPushService.sendWebPushToUser.mockRejectedValue(new Error('db'));
+    fcmService.sendFcmToUser.mockResolvedValue(true);
+    await expect(
+      service.notifyMachineCompletion('user-1', machine),
+    ).resolves.toBeUndefined();
+
+    webPushService.sendWebPushToUser.mockResolvedValue(true);
+    fcmService.sendFcmToUser.mockRejectedValue(new Error('fcm'));
+    await expect(
+      service.notifyMachineCompletion('user-1', machine),
+    ).resolves.toBeUndefined();
+  });
+
+  it('propagates a channel failure when nothing was delivered', async () => {
+    webPushService.sendWebPushToUser.mockResolvedValue(false);
+    fcmService.sendFcmToUser.mockRejectedValue(new Error('fcm'));
+    await expect(
+      service.notifyMachineCompletion('user-1', machine),
+    ).rejects.toThrow('fcm');
+  });
+
+  it('identifies the laundry-room subscription in the data payload and counts an FCM-only delivery', async () => {
+    const getSubscribers = jest.fn().mockResolvedValue([
+      {
+        uuid: 'sub-1',
+        userUuid: 'user-1',
+        location: Location.A,
+        gender: Gender.MALE,
+        type: MachineType.WASHER,
+        createdAt: new Date(),
+      },
+    ]);
+    const complete = jest.fn();
+    const svc = new NotificationService(
+      {
+        getLaundryRoomSubscribers: getSubscribers,
+        completeLaundryRoomNotifications: complete,
+      } as never,
+      webPushService as never,
+      fcmService as never,
+      { countAvailableMachines: jest.fn().mockResolvedValue(1) } as never,
+    );
+    webPushService.sendWebPushToUser.mockResolvedValue(false);
+    fcmService.sendFcmToUser.mockResolvedValue(true);
+    await svc.notifyLaundryRoomAvailable(
+      Location.A,
+      Gender.MALE,
+      MachineType.WASHER,
+    );
+    expect(fcmService.sendFcmToUser).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({
+        data: {
+          type: 'laundry-room-available',
+          location: 'A',
+          gender: 'MALE',
+          machineType: 'WASHER',
+        },
+      }),
+    );
+    expect(complete).toHaveBeenCalledWith([
+      expect.objectContaining({ uuid: 'sub-1' }),
+    ]);
+  });
+
+  it('registers and unregisters native tokens through the repository', async () => {
+    await service.registerNativePush(
+      'user-1',
+      { platform: 'IOS', token: 'tok' },
+      'UA',
+    );
+    expect(repository.registerNativePush).toHaveBeenCalledWith(
+      'user-1',
+      'IOS',
+      'tok',
+      'UA',
+    );
+    await service.unregisterNativePush('user-1', 'tok');
+    expect(repository.unregisterNativePush).toHaveBeenCalledWith(
+      'user-1',
+      'tok',
+    );
+  });
 });

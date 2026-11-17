@@ -34,6 +34,14 @@ enum Gender {
   @@map("gender")
 }
 
+enum PushPlatform {
+  WEB
+  IOS
+  ANDROID
+
+  @@map("push_platform")
+}
+
 enum Location {
   A
   B
@@ -185,14 +193,18 @@ model MachinePower {
 }
 
 model UserPushSubscription {
-  uuid            String    @id @default(uuid()) @db.Uuid
-  userUuid        String    @map("user_uuid") @db.Uuid
-  endpoint        String    @unique @map("endpoint")
-  p256dh          String    @map("p256dh")
-  auth            String    @map("auth")
-  userAgent       String?   @map("user_agent")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  lastActivatedAt DateTime? @map("last_activated_at")
+  uuid            String       @id @default(uuid()) @db.Uuid
+  userUuid        String       @map("user_uuid") @db.Uuid
+  platform        PushPlatform @default(WEB) @map("platform")
+  // Web Push credentials; null for native (FCM) devices.
+  endpoint        String?      @unique @map("endpoint")
+  p256dh          String?      @map("p256dh")
+  auth            String?      @map("auth")
+  // FCM registration token; null for Web Push subscriptions.
+  fcmToken        String?      @unique @map("fcm_token")
+  userAgent       String?      @map("user_agent")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  lastActivatedAt DateTime?    @map("last_activated_at")
 
   user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
 

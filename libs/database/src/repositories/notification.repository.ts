@@ -11,6 +11,7 @@ import {
   Gender,
   MachineType,
   Prisma,
+  PushPlatform,
   Role,
 } from 'generated/prisma/client';
 import { PrismaTransaction } from '@lib/database/types';
@@ -34,6 +35,7 @@ export class NotificationRepository {
     });
   }
 
+  /** Upserts a Web Push subscription; an existing endpoint moves to `userUuid`. */
   async registerPush(
     userUuid: string,
     endpoint: string,
@@ -47,6 +49,7 @@ export class NotificationRepository {
         where: { endpoint: endpoint },
         create: {
           userUuid,
+          platform: PushPlatform.WEB,
           endpoint,
           p256dh,
           auth,
@@ -62,6 +65,27 @@ export class NotificationRepository {
     );
   }
 
+  /**
+   * Upserts a native FCM device by token. A token already registered to
+   * another account moves to `userUuid`, so a shared device never keeps
+   * notifying the previous account.
+   */
+  async registerNativePush(
+    userUuid: string,
+    platform: Exclude<PushPlatform, 'WEB'>,
+    fcmToken: string,
+    userAgent?: string,
+  ) {
+    return this.run(
+      'registerNativePush',
+      this.databaseService.userPushSubscription.upsert({
+        where: { fcmToken },
+        create: { userUuid, platform, fcmToken, userAgent },
+        update: { userUuid, platform, userAgent },
+      }),
+    );
+  }
+
   async unregisterPush(userUuid: string, endpoint: string) {
     return this.run(
       'unregisterPush',
@@ -71,11 +95,32 @@ export class NotificationRepository {
     );
   }
 
-  async getUserPushSubscriptions(userUuid: string) {
+  async unregisterNativePush(userUuid: string, fcmToken: string) {
     return this.run(
-      'getUserPushSubscriptions',
+      'unregisterNativePush',
+      this.databaseService.userPushSubscription.deleteMany({
+        where: { fcmToken, userUuid },
+      }),
+    );
+  }
+
+  async getUserWebPushSubscriptions(userUuid: string) {
+    return this.run(
+      'getUserWebPushSubscriptions',
       this.databaseService.userPushSubscription.findMany({
-        where: { userUuid },
+        where: { userUuid, platform: PushPlatform.WEB },
+      }),
+    );
+  }
+
+  async getUserNativePushDevices(userUuid: string) {
+    return this.run(
+      'getUserNativePushDevices',
+      this.databaseService.userPushSubscription.findMany({
+        where: {
+          userUuid,
+          platform: { in: [PushPlatform.IOS, PushPlatform.ANDROID] },
+        },
       }),
     );
   }

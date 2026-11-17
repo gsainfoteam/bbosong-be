@@ -66,6 +66,10 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Push notifications
+
+Web Push (VAPID) and native FCM push (iOS via APNs, Android) are both supported. See [docs/native-push.md](docs/native-push.md) for the API contract, environment variables and the Firebase setup checklist.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

@@ -5,13 +5,9 @@ import { NotificationRepository } from '@lib/database/repositories/notification.
 import * as webpush from 'web-push';
 import { formatError } from '../../common/utils/format-error.util';
 
-export interface WebPushPayload {
-  title: string;
-  body: string;
-  icon?: string;
-  url?: string;
-  data?: Record<string, unknown>;
-}
+import { PushPayload } from '../types/push-payload.type';
+
+export type WebPushPayload = PushPayload;
 
 @Loggable()
 @Injectable()
@@ -49,7 +45,7 @@ export class WebPushService implements OnModuleInit {
     payload: WebPushPayload,
   ): Promise<boolean> {
     const subscriptions =
-      await this.notificationRepository.getUserPushSubscriptions(userUuid);
+      await this.notificationRepository.getUserWebPushSubscriptions(userUuid);
 
     if (subscriptions.length === 0) {
       this.logger.debug(
@@ -63,8 +59,11 @@ export class WebPushService implements OnModuleInit {
 
     await Promise.all(
       subscriptions.map(async (sub) => {
+        // The DB check constraint guarantees WEB rows carry all credentials.
+        if (!sub.endpoint || !sub.p256dh || !sub.auth) return;
+        const endpoint = sub.endpoint;
         const pushSubscription: webpush.PushSubscription = {
-          endpoint: sub.endpoint,
+          endpoint,
           keys: {
             p256dh: sub.p256dh,
             auth: sub.auth,
@@ -85,7 +84,7 @@ export class WebPushService implements OnModuleInit {
             );
           } catch (activationError: unknown) {
             this.logger.error(
-              `Failed to record successful web push for endpoint ${this.maskEndpoint(sub.endpoint)}: ${formatError(activationError)}`,
+              `Failed to record successful web push for endpoint ${this.maskEndpoint(endpoint)}: ${formatError(activationError)}`,
             );
           }
         } catch (error: unknown) {
@@ -94,7 +93,7 @@ export class WebPushService implements OnModuleInit {
               ? error.statusCode
               : (error as { statusCode?: number })?.statusCode;
 
-          const maskedEp = this.maskEndpoint(sub.endpoint);
+          const maskedEp = this.maskEndpoint(endpoint);
 
           // Automatic cleanup of expired or unsubscribed endpoints (404 Not Found or 410 Gone)
           if (statusCode === 404 || statusCode === 410) {
@@ -104,7 +103,7 @@ export class WebPushService implements OnModuleInit {
             try {
               await this.notificationRepository.unregisterPush(
                 userUuid,
-                sub.endpoint,
+                endpoint,
               );
             } catch (cleanupError: unknown) {
               this.logger.error(
