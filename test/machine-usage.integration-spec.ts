@@ -723,6 +723,74 @@ describe('Machine usage history (PostgreSQL)', () => {
     });
   });
 
+  describe('usage stats by date, weekday, hour, room and gender', () => {
+    it('groups KST sessions by the requested dimensions and applies filters', async () => {
+      const aMale = await machines.createMachine({
+        location: Location.A,
+        gender: Gender.MALE,
+        type: MachineType.WASHER,
+        index: 91,
+      });
+      const bFemale = await machines.createMachine({
+        location: Location.B,
+        gender: Gender.FEMALE,
+        type: MachineType.WASHER,
+        index: 91,
+      });
+      const session = (machineUuid: string, start: string, minutes = 60) => ({
+        machineUuid,
+        userUuid: null,
+        startedAt: new Date(start),
+        endedAt: new Date(Date.parse(start) + minutes * 60_000),
+      });
+      await prisma.usingMachine.createMany({
+        data: [
+          // 2020-03-02 (Mon) 09:xx KST, twice, room A male
+          session(aMale.uuid, '2020-03-02T00:10:00.000Z'),
+          session(aMale.uuid, '2020-03-02T00:50:00.000Z'),
+          // 2020-03-02 (Mon) 23:30 KST crosses into the next UTC day, room B female
+          session(bFemale.uuid, '2020-03-02T14:30:00.000Z'),
+          // 2020-03-08 (Sun) 10:00 KST, room B female
+          session(bFemale.uuid, '2020-03-08T01:00:00.000Z'),
+          // short session is excluded
+          session(aMale.uuid, '2020-03-02T00:20:00.000Z', 10),
+          // outside the requested range is excluded
+          session(aMale.uuid, '2020-03-09T00:00:00.000Z'),
+        ],
+      });
+
+      const from = '2020-03-02';
+      const to = '2020-03-08';
+      const total = await usages.countUsageStats(from, to);
+      const byWeekdayHour = await usages.countUsageStats(from, to, [
+        'hour',
+        'weekday',
+      ]);
+      const byRoomGender = await usages.countUsageStats(from, to, [
+        'gender',
+        'location',
+      ]);
+      const byDate = await usages.countUsageStats(from, to, ['date'], {
+        location: Location.B,
+      });
+
+      expect(total).toEqual([{ sessionCount: 4 }]);
+      expect(byWeekdayHour).toEqual([
+        { weekday: 1, hour: 9, sessionCount: 2 },
+        { weekday: 1, hour: 23, sessionCount: 1 },
+        { weekday: 7, hour: 10, sessionCount: 1 },
+      ]);
+      expect(byRoomGender).toEqual([
+        { location: 'A', gender: 'MALE', sessionCount: 2 },
+        { location: 'B', gender: 'FEMALE', sessionCount: 2 },
+      ]);
+      expect(byDate).toEqual([
+        { date: '2020-03-02', sessionCount: 1 },
+        { date: '2020-03-08', sessionCount: 1 },
+      ]);
+    });
+  });
+
   describe('daily session registration stats', () => {
     it('buckets by KST day, fills gaps, and splits registered vs unregistered', async () => {
       const machine = await machines.createMachine({

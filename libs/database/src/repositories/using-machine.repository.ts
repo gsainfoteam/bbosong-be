@@ -18,6 +18,30 @@ import {
 import { MACHINE_REREGISTRATION_MIN_DURATION_MS } from '../constants/machine-registration';
 import { Trace } from '@gsainfoteam/nest-observability';
 
+export type UsageStatsDimension =
+  'date' | 'weekday' | 'hour' | 'location' | 'gender';
+
+// Whitelisted SQL expressions (KST-based); never built from user input.
+const USAGE_DIMENSION_SQL: Record<UsageStatsDimension, string> = {
+  date: `to_char((us.started_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD')`,
+  weekday: `EXTRACT(ISODOW FROM (us.started_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Seoul')::int`,
+  hour: `EXTRACT(HOUR FROM (us.started_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Seoul')::int`,
+  location: 'm.location::text',
+  gender: 'm.gender::text',
+};
+const USAGE_DIMENSION_ORDER = Object.keys(
+  USAGE_DIMENSION_SQL,
+) as UsageStatsDimension[];
+
+export interface UsageStatsRow {
+  date?: string;
+  weekday?: number;
+  hour?: number;
+  location?: Location;
+  gender?: Gender;
+  sessionCount: number;
+}
+
 export interface DailySessionFilter {
   location?: Location;
   gender?: Gender;
@@ -388,6 +412,55 @@ export class UsingMachineRepository {
       date: row.date,
       registeredCount: Number(row.registeredCount),
       unregisteredCount: Number(row.unregisteredCount),
+    }));
+  }
+
+  // Counts qualifying sessions (completed, >= minimum duration) grouped by the
+  // requested dimensions. Only groups that have sessions are returned.
+  async countUsageStats(
+    from: string,
+    to: string,
+    groupBy: UsageStatsDimension[] = [],
+    filter: DailySessionFilter = {},
+  ): Promise<UsageStatsRow[]> {
+    const dims = USAGE_DIMENSION_ORDER.filter((d) => groupBy.includes(d));
+    const select = Prisma.join(
+      [
+        ...dims.map((d) => Prisma.raw(`${USAGE_DIMENSION_SQL[d]} AS "${d}"`)),
+        Prisma.raw('COUNT(*) AS "sessionCount"'),
+      ],
+      ', ',
+    );
+    const ordinals = Prisma.raw(dims.map((_, i) => i + 1).join(', '));
+    const grouping = dims.length
+      ? Prisma.sql`GROUP BY ${ordinals} ORDER BY ${ordinals}`
+      : Prisma.empty;
+
+    const rows = await this.databaseService.$queryRaw<
+      Array<Record<string, string | number | bigint>>
+    >`
+      SELECT ${select}
+      FROM using_machine us
+      JOIN machine m ON m.uuid = us.machine_uuid
+      WHERE us.started_at >= (${from}::date - interval '9 hours')
+        AND us.started_at < (${to}::date + interval '1 day' - interval '9 hours')
+        AND us.ended_at IS NOT NULL
+        AND (EXTRACT(EPOCH FROM (us.ended_at - us.started_at)) * 1000)
+          >= ${MACHINE_REREGISTRATION_MIN_DURATION_MS}
+        AND m.location = COALESCE(${filter.location ?? null}::location, m.location)
+        AND m.gender = COALESCE(${filter.gender ?? null}::gender, m.gender)
+        AND m.type = COALESCE(${filter.type ?? null}::machine_type, m.type)
+      ${grouping}
+    `.catch((error) => {
+      this.logger.error(`countUsageStats error: ${String(error)}`);
+      throw new InternalServerErrorException('Database Error');
+    });
+
+    return rows.map((row) => ({
+      ...row,
+      ...(dims.includes('weekday') && { weekday: Number(row.weekday) }),
+      ...(dims.includes('hour') && { hour: Number(row.hour) }),
+      sessionCount: Number(row.sessionCount),
     }));
   }
 }

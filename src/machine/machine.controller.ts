@@ -31,6 +31,8 @@ import { MachineService } from './machine.service';
 import { MachineConnectivityService } from './machine-connectivity.service';
 import { GetMachineByShortlinkReqDto } from './dto/req/get-machine-by-shortlink-req.dto';
 import { GetDailySessionStatsReqDto } from './dto/req/get-daily-session-stats-req.dto';
+import { GetUsageStatsReqDto } from './dto/req/get-usage-stats-req.dto';
+import { GetUsageStatsResDto } from './dto/res/get-usage-stats-res.dto';
 import { GetDailySessionStatsResDto } from './dto/res/get-daily-session-stats-res.dto';
 import { GetLaundryRoomStatusReqDto } from './dto/req/get-laundry-room-status-req.dto';
 import { GetLaundryRoomStatusResDto } from './dto/res/get-laundry-room-status-res.dto';
@@ -139,6 +141,30 @@ export class MachineController {
       gender: query.gender,
       type: query.type,
     });
+  }
+
+  @Get('stats/usage')
+  @ApiOperation({
+    summary: 'Laundry room usage stats by date, weekday, hour, room and gender',
+    description:
+      'Counts sessions (completed, at least 30 minutes) started in the KST date range, grouped by any combination of date, weekday (ISO, 1=Mon), hour (KST), location and gender via groupBy. Optional location, gender and type params filter machines. Only groups with sessions are returned. Admin only.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(AdminGuard)
+  @ApiOkResponse({ type: GetUsageStatsResDto, isArray: true })
+  async getUsageStats(
+    @Query() query: GetUsageStatsReqDto,
+  ): Promise<GetUsageStatsResDto[]> {
+    return this.machineService.getUsageStats(
+      query.from,
+      query.to,
+      query.groupBy,
+      {
+        location: query.location,
+        gender: query.gender,
+        type: query.type,
+      },
+    );
   }
 
   @Post()

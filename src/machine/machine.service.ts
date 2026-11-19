@@ -3,6 +3,8 @@ import { Trace } from '@gsainfoteam/nest-observability';
 import { MachineRepository } from '@lib/database/repositories/machine.repository';
 import {
   DailySessionFilter,
+  UsageStatsDimension,
+  UsageStatsRow,
   UsingMachineRepository,
 } from '@lib/database/repositories/using-machine.repository';
 import {
@@ -623,6 +625,20 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       userUuid,
       limit,
       offset,
+    );
+  }
+
+  async getUsageStats(
+    from: string,
+    to: string,
+    groupBy: UsageStatsDimension[] = [],
+    filter: DailySessionFilter = {},
+  ): Promise<UsageStatsRow[]> {
+    return this.usingMachineRepository.countUsageStats(
+      from,
+      to,
+      groupBy,
+      filter,
     );
   }
 
