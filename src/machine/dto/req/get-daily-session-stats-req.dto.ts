@@ -1,12 +1,15 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsEnum,
   IsNotEmpty,
+  IsOptional,
   Matches,
   Validate,
   ValidatorConstraint,
   ValidatorConstraintInterface,
   ValidationArguments,
 } from 'class-validator';
+import { Gender, Location, MachineType } from 'generated/prisma/client';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_INCLUSIVE_DAYS = 90;
@@ -46,4 +49,31 @@ export class GetDailySessionStatsReqDto {
   @Matches(DATE_RE)
   @Validate(DailySessionStatsRangeConstraint)
   to: string;
+
+  @ApiPropertyOptional({
+    description: 'Laundry room location filter (A or B). Omit for all.',
+    enum: Location,
+    example: Location.A,
+  })
+  @IsOptional()
+  @IsEnum(Location)
+  location?: Location;
+
+  @ApiPropertyOptional({
+    description: 'Laundry room gender filter. Omit for all.',
+    enum: Gender,
+    example: Gender.FEMALE,
+  })
+  @IsOptional()
+  @IsEnum(Gender)
+  gender?: Gender;
+
+  @ApiPropertyOptional({
+    description: 'Machine type filter (WASHER or DRYER). Omit for all.',
+    enum: MachineType,
+    example: MachineType.WASHER,
+  })
+  @IsOptional()
+  @IsEnum(MachineType)
+  type?: MachineType;
 }

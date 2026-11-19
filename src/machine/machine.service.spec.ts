@@ -891,7 +891,27 @@ describe('MachineService access and registration', () => {
       ).resolves.toEqual(rows);
       expect(
         usingMachineRepository.countDailySessionsByRegistration,
-      ).toHaveBeenCalledWith('2026-11-10', '2026-11-10');
+      ).toHaveBeenCalledWith('2026-11-10', '2026-11-10', {});
+    });
+
+    it('forwards location, gender and type filters to the repository', async () => {
+      usingMachineRepository.countDailySessionsByRegistration = jest
+        .fn()
+        .mockResolvedValue([]);
+
+      await service.getDailySessionStats('2026-11-10', '2026-11-10', {
+        location: Location.A,
+        gender: Gender.MALE,
+        type: MachineType.WASHER,
+      });
+
+      expect(
+        usingMachineRepository.countDailySessionsByRegistration,
+      ).toHaveBeenCalledWith('2026-11-10', '2026-11-10', {
+        location: Location.A,
+        gender: Gender.MALE,
+        type: MachineType.WASHER,
+      });
     });
   });
 });

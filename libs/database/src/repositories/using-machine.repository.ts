@@ -8,9 +8,21 @@ import {
   Logger,
 } from '@nestjs/common';
 import { DatabaseService } from '@lib/database/database.service';
-import { Prisma, UsingMachine } from 'generated/prisma/client';
+import {
+  Gender,
+  Location,
+  MachineType,
+  Prisma,
+  UsingMachine,
+} from 'generated/prisma/client';
 import { MACHINE_REREGISTRATION_MIN_DURATION_MS } from '../constants/machine-registration';
 import { Trace } from '@gsainfoteam/nest-observability';
+
+export interface DailySessionFilter {
+  location?: Location;
+  gender?: Gender;
+  type?: MachineType;
+}
 
 @Loggable()
 @Injectable()
@@ -314,9 +326,12 @@ export class UsingMachineRepository {
     return result.count;
   }
 
+  // Optional filters narrow sessions by their machine's laundry room attributes.
+  // Omitted filters match all machines.
   async countDailySessionsByRegistration(
     from: string,
     to: string,
+    filter: DailySessionFilter = {},
   ): Promise<
     Array<{
       date: string;
@@ -340,15 +355,19 @@ export class UsingMachineRepository {
       ),
       stats AS (
         SELECT
-          ((started_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Seoul')::date AS day,
-          COUNT(*) FILTER (WHERE user_uuid IS NOT NULL) AS registered_count,
-          COUNT(*) FILTER (WHERE user_uuid IS NULL) AS unregistered_count
-        FROM using_machine
-        WHERE started_at >= (${from}::date - interval '9 hours')
-          AND started_at < (${to}::date + interval '1 day' - interval '9 hours')
-          AND ended_at IS NOT NULL
-          AND (EXTRACT(EPOCH FROM (ended_at - started_at)) * 1000)
+          ((us.started_at AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Seoul')::date AS day,
+          COUNT(*) FILTER (WHERE us.user_uuid IS NOT NULL) AS registered_count,
+          COUNT(*) FILTER (WHERE us.user_uuid IS NULL) AS unregistered_count
+        FROM using_machine us
+        JOIN machine m ON m.uuid = us.machine_uuid
+        WHERE us.started_at >= (${from}::date - interval '9 hours')
+          AND us.started_at < (${to}::date + interval '1 day' - interval '9 hours')
+          AND us.ended_at IS NOT NULL
+          AND (EXTRACT(EPOCH FROM (us.ended_at - us.started_at)) * 1000)
             >= ${MACHINE_REREGISTRATION_MIN_DURATION_MS}
+          AND m.location = COALESCE(${filter.location ?? null}::location, m.location)
+          AND m.gender = COALESCE(${filter.gender ?? null}::gender, m.gender)
+          AND m.type = COALESCE(${filter.type ?? null}::machine_type, m.type)
         GROUP BY 1
       )
       SELECT
