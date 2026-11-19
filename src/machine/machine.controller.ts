@@ -126,7 +126,7 @@ export class MachineController {
   @ApiOperation({
     summary: 'Daily registered vs unregistered session counts',
     description:
-      'Returns per-KST-day counts of UsingMachine sessions started in the range that lasted at least 30 minutes (ended_at set). Empty days are included as zeros. Admin only.',
+      'Returns per-KST-day counts of UsingMachine sessions started in the range that lasted at least 30 minutes (ended_at set). Optional location, gender and type query params narrow the sessions to machines of that laundry room attribute; omitted params match all. Empty days are included as zeros. Admin only.',
   })
   @ApiBearerAuth('user')
   @UseGuards(AdminGuard)
@@ -134,7 +134,11 @@ export class MachineController {
   async getDailySessionStats(
     @Query() query: GetDailySessionStatsReqDto,
   ): Promise<GetDailySessionStatsResDto[]> {
-    return this.machineService.getDailySessionStats(query.from, query.to);
+    return this.machineService.getDailySessionStats(query.from, query.to, {
+      location: query.location,
+      gender: query.gender,
+      type: query.type,
+    });
   }
 
   @Post()

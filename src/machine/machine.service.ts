@@ -1,7 +1,10 @@
 import { MACHINE_REREGISTRATION_MIN_DURATION_MS } from '@lib/database/constants/machine-registration';
 import { Trace } from '@gsainfoteam/nest-observability';
 import { MachineRepository } from '@lib/database/repositories/machine.repository';
-import { UsingMachineRepository } from '@lib/database/repositories/using-machine.repository';
+import {
+  DailySessionFilter,
+  UsingMachineRepository,
+} from '@lib/database/repositories/using-machine.repository';
 import {
   LaundryRoomSummary,
   MachineWithUsage,
@@ -447,13 +450,9 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       ['RUNNING', 'DETECTING', 'COOLING', 'PAUSE'].includes(currentState)
         ? MachineStatus.DRY
         : currentState &&
-            [
-              'END',
-              'POWER_OFF',
-              'SLEEP',
-              'INITIAL',
-              'WRINKLE_CARE',
-            ].includes(currentState)
+            ['END', 'POWER_OFF', 'SLEEP', 'INITIAL', 'WRINKLE_CARE'].includes(
+              currentState,
+            )
           ? MachineStatus.IDLE
           : null;
     const hour = state.timer?.remainHour;
@@ -630,6 +629,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   async getDailySessionStats(
     from: string,
     to: string,
+    filter: DailySessionFilter = {},
   ): Promise<
     Array<{
       date: string;
@@ -640,6 +640,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     return this.usingMachineRepository.countDailySessionsByRegistration(
       from,
       to,
+      filter,
     );
   }
 

@@ -780,5 +780,86 @@ describe('Machine usage history (PostgreSQL)', () => {
         { date: '2020-01-12', registeredCount: 1, unregisteredCount: 0 },
       ]);
     });
+
+    it('narrows daily stats by location, gender and machine type', async () => {
+      const femaleWasher = await machines.createMachine({
+        location: Location.B,
+        gender: Gender.FEMALE,
+        type: MachineType.WASHER,
+        index: 97,
+      });
+      const maleDryer = await machines.createMachine({
+        location: Location.B,
+        gender: Gender.MALE,
+        type: MachineType.DRYER,
+        index: 97,
+      });
+
+      await prisma.usingMachine.createMany({
+        data: [
+          {
+            machineUuid: femaleWasher.uuid,
+            userUuid,
+            startedAt: new Date('2020-02-10T01:00:00.000Z'),
+            endedAt: new Date('2020-02-10T02:00:00.000Z'),
+          },
+          {
+            machineUuid: maleDryer.uuid,
+            userUuid: null,
+            startedAt: new Date('2020-02-10T01:00:00.000Z'),
+            endedAt: new Date('2020-02-10T02:00:00.000Z'),
+          },
+        ],
+      });
+
+      const range = ['2020-02-10', '2020-02-10'] as const;
+      const [all] = await usages.countDailySessionsByRegistration(...range);
+      const [femaleOnly] = await usages.countDailySessionsByRegistration(
+        ...range,
+        { gender: Gender.FEMALE },
+      );
+      const [locationB] = await usages.countDailySessionsByRegistration(
+        ...range,
+        { location: Location.B },
+      );
+      const [femaleWasherOnly] = await usages.countDailySessionsByRegistration(
+        ...range,
+        {
+          location: Location.B,
+          gender: Gender.FEMALE,
+          type: MachineType.WASHER,
+        },
+      );
+      const [noMatch] = await usages.countDailySessionsByRegistration(
+        ...range,
+        { location: Location.A, gender: Gender.MALE, type: MachineType.WASHER },
+      );
+
+      expect(all).toEqual({
+        date: '2020-02-10',
+        registeredCount: 1,
+        unregisteredCount: 1,
+      });
+      expect(femaleOnly).toEqual({
+        date: '2020-02-10',
+        registeredCount: 1,
+        unregisteredCount: 0,
+      });
+      expect(locationB).toEqual({
+        date: '2020-02-10',
+        registeredCount: 1,
+        unregisteredCount: 1,
+      });
+      expect(femaleWasherOnly).toEqual({
+        date: '2020-02-10',
+        registeredCount: 1,
+        unregisteredCount: 0,
+      });
+      expect(noMatch).toEqual({
+        date: '2020-02-10',
+        registeredCount: 0,
+        unregisteredCount: 0,
+      });
+    });
   });
 });
