@@ -77,6 +77,7 @@ describe('MachineService access and registration', () => {
     getUsingMachineByMachineUuid: jest.fn(),
     createUsingMachine: jest.fn(),
     countDailySessionsByRegistration: jest.fn(),
+    countUsageStats: jest.fn(),
   };
   let service: MachineService;
   const notificationService = {
@@ -912,6 +913,27 @@ describe('MachineService access and registration', () => {
         gender: Gender.MALE,
         type: MachineType.WASHER,
       });
+    });
+  });
+
+  describe('getUsageStats', () => {
+    it('delegates to UsingMachineRepository', async () => {
+      const rows = [{ weekday: 1, hour: 9, sessionCount: 2 }];
+      usingMachineRepository.countUsageStats = jest
+        .fn()
+        .mockResolvedValue(rows);
+
+      await expect(
+        service.getUsageStats('2026-11-01', '2026-11-10', ['weekday', 'hour'], {
+          location: Location.A,
+        }),
+      ).resolves.toEqual(rows);
+      expect(usingMachineRepository.countUsageStats).toHaveBeenCalledWith(
+        '2026-11-01',
+        '2026-11-10',
+        ['weekday', 'hour'],
+        { location: Location.A },
+      );
     });
   });
 });

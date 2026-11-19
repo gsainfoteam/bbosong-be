@@ -112,3 +112,63 @@ describe('UsingMachineRepository.countDailySessionsByRegistration', () => {
     expect(values.slice(-3)).toEqual([null, null, null]);
   });
 });
+
+describe('UsingMachineRepository.countUsageStats', () => {
+  const queryRaw = jest.fn();
+  let repository: UsingMachineRepository;
+
+  beforeEach(() => {
+    queryRaw.mockReset();
+    repository = new UsingMachineRepository({
+      $queryRaw: queryRaw,
+    } as unknown as DatabaseService);
+  });
+
+  // Prisma.sql fragments are nested in the tagged template values.
+  const render = (parts: readonly string[], vals: readonly unknown[]): string =>
+    parts.reduce((acc, part, i) => {
+      const v = vals[i - 1] as
+        { strings: string[]; values: unknown[] } | undefined;
+      const inner =
+        i === 0 ? '' : v?.strings ? render(v.strings, v.values) : '?';
+      return acc + inner + part;
+    }, '');
+  const flattenSql = (): string => {
+    const [strings, ...values] = queryRaw.mock.calls[0] as [
+      TemplateStringsArray,
+      ...unknown[],
+    ];
+    return render(strings, values);
+  };
+
+  it('groups by requested dimensions in canonical order and coerces numbers', async () => {
+    queryRaw.mockResolvedValue([
+      { weekday: 1, hour: 14n, location: 'A', sessionCount: 3n },
+    ]);
+
+    const rows = await repository.countUsageStats('2026-11-01', '2026-11-10', [
+      'location',
+      'hour',
+      'weekday',
+    ]);
+
+    const sql = flattenSql();
+    expect(sql).toMatch(
+      /ISODOW[\s\S]*AS "weekday", [\s\S]*HOUR[\s\S]*AS "hour", m\.location::text AS "location", COUNT\(\*\) AS "sessionCount"/,
+    );
+    expect(sql).toContain('GROUP BY 1, 2, 3 ORDER BY 1, 2, 3');
+    expect(sql).toContain('ended_at IS NOT NULL');
+    expect(rows).toEqual([
+      { weekday: 1, hour: 14, location: 'A', sessionCount: 3 },
+    ]);
+  });
+
+  it('returns only a total, without GROUP BY, when no dimension is requested', async () => {
+    queryRaw.mockResolvedValue([{ sessionCount: 5n }]);
+
+    const rows = await repository.countUsageStats('2026-11-01', '2026-11-10');
+
+    expect(flattenSql()).not.toContain('GROUP BY');
+    expect(rows).toEqual([{ sessionCount: 5 }]);
+  });
+});
