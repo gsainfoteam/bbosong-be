@@ -158,7 +158,11 @@ describe('Machine usage history (PostgreSQL)', () => {
     expect(starts[0].uuid).not.toBe(legacyUsageUuid);
     expect(await usages.getUsingMachinesByUser(userUuid)).toEqual([]);
     expect(await usages.getUsingMachinesByUser(otherUserUuid)).toEqual([
-      starts[0],
+      expect.objectContaining({
+        ...starts[0],
+        thinqRemainingMinutes: null,
+        thinqUpdatedAt: null,
+      }),
     ]);
     expect(
       (await machines.getMachineWithUsage(machineUuid))?.currentUsage,

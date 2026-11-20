@@ -51,7 +51,10 @@ import { GetMachineDetailResDto } from './dto/res/get-machine-detail-res.dto';
 import { GetMachinePowerReqDto } from './dto/req/get-machine-power-req.dto';
 import { GetMachinePowerResDto } from './dto/res/get-machine-power-res.dto';
 import { GetMachineUsageHistoryReqDto } from './dto/req/get-machine-usage-history-req.dto';
-import { GetUsingMachineResDto } from './dto/res/get-using-machine-res.dto';
+import {
+  GetActiveUsingMachineResDto,
+  GetUsingMachineResDto,
+} from './dto/res/get-using-machine-res.dto';
 import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto';
 import { SuccessResDto } from '../common/dto/res/success-res.dto';
 import { ThinqService } from '../thinq/thinq.service';
@@ -249,20 +252,21 @@ export class MachineController {
   @ApiOperation({
     summary: 'Get machines currently used by current user',
     description:
-      "Retrieve active machine usage sessions linked to the authenticated user's account.",
+      "Retrieve active machine usage sessions linked to the authenticated user's account, including the ThinQ remaining minutes (remainingMinutes, as of thinqUpdatedAt) when available.",
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @ApiOkResponse({
-    type: GetUsingMachineResDto,
+    type: GetActiveUsingMachineResDto,
     isArray: true,
     description: "Successfully retrieved the user's machine usage sessions.",
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async getUsingMachinesByUser(
     @GetUser() user: User,
-  ): Promise<GetUsingMachineResDto[]> {
-    return await this.machineService.getUsingMachinesByUser(user.uuid);
+  ): Promise<GetActiveUsingMachineResDto[]> {
+    const usages = await this.machineService.getUsingMachinesByUser(user.uuid);
+    return usages.map((usage) => new GetActiveUsingMachineResDto(usage));
   }
 
   @Get('/me/history')

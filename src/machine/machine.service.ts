@@ -10,6 +10,7 @@ import {
 import {
   LaundryRoomSummary,
   MachineWithUsage,
+  UsingMachineWithThinq,
 } from '@lib/database/types/machine.type';
 import { Loggable } from '@lib/logger';
 import { MatterConnectionService } from '@lib/matter-client/matter-connection.service';
@@ -612,7 +613,9 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   }
 
   // Get machines currently being used by the given user
-  async getUsingMachinesByUser(userUuid: string): Promise<UsingMachine[]> {
+  async getUsingMachinesByUser(
+    userUuid: string,
+  ): Promise<UsingMachineWithThinq[]> {
     return await this.usingMachineRepository.getUsingMachinesByUser(userUuid);
   }
 
