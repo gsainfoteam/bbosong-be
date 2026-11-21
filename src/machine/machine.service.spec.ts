@@ -46,6 +46,7 @@ jest.mock(
 );
 jest.mock('../notification/notification.service', () => ({}));
 jest.mock('../notification/services/live-activity.service', () => ({}));
+jest.mock('../notification/services/live-update.service', () => ({}));
 jest.mock('./shlink.service', () => ({}));
 
 describe('MachineService access and registration', () => {
@@ -92,6 +93,10 @@ describe('MachineService access and registration', () => {
     registerToken: jest.fn(),
     unregisterToken: jest.fn(),
   };
+  const liveUpdateService = {
+    syncRunning: jest.fn(),
+    end: jest.fn(),
+  };
   const notificationService = {
     notifyMachineReregistered: jest.fn(),
     notifyMachineCompletion: jest.fn(),
@@ -109,6 +114,7 @@ describe('MachineService access and registration', () => {
       {} as never,
       {} as never,
       liveActivityService as never,
+      liveUpdateService as never,
     );
     machineRepository.getMachineWithUsage.mockResolvedValue(machine);
     machineRepository.getMachineWithUsageByShortCode.mockResolvedValue(machine);
@@ -465,6 +471,36 @@ describe('MachineService access and registration', () => {
     expect(liveActivityService.endForUsingMachine).not.toHaveBeenCalled();
   });
 
+  it('sends the Live Update end message when the session finishes', async () => {
+    const startedAt = new Date('2026-11-21T00:00:00Z');
+    usingMachineRepository.finishUsingMachine.mockResolvedValue({
+      uuid: 'usage-1',
+      machineUuid,
+      userUuid,
+      notifyOnCompletion: false,
+      startedAt,
+      endedAt: new Date(),
+    });
+    machineRepository.getMachine.mockResolvedValue(machine);
+    await service.finishUsingMachine(machineUuid);
+    expect(liveUpdateService.end).toHaveBeenCalledWith(
+      'usage-1',
+      userUuid,
+      expect.objectContaining({ machineUuid: machine.uuid, startedAt }),
+    );
+  });
+
+  it('sends the Live Update end message when the user unlinks from the machine', async () => {
+    usingMachineRepository.unlinkUserFromUsingMachine.mockResolvedValue(1);
+    machineRepository.getMachine.mockResolvedValue(machine);
+    await service.unlinkUserFromMachine(userUuid, machineUuid);
+    expect(liveUpdateService.end).toHaveBeenCalledWith(
+      null,
+      userUuid,
+      expect.objectContaining({ machineUuid: machine.uuid, startedAt: null }),
+    );
+  });
+
   it("ends the user's Live Activities when they unlink from the machine", async () => {
     usingMachineRepository.unlinkUserFromUsingMachine.mockResolvedValue(1);
     await service.unlinkUserFromMachine(userUuid, machineUuid);
@@ -675,6 +711,7 @@ describe('MachineService access and registration', () => {
           {} as never,
           {} as never,
           liveActivityService as never,
+          liveUpdateService as never,
         );
         await expect(service.onModuleInit()).resolves.toBeUndefined();
         await service.updateThinqDryerState(machineUuid, 'device', {
@@ -954,6 +991,7 @@ describe('MachineService access and registration', () => {
         {} as never,
         {} as never,
         liveActivityService as never,
+        liveUpdateService as never,
       );
       await service.onModuleInit();
     });

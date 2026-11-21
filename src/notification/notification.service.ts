@@ -62,6 +62,7 @@ export class NotificationService {
       dto.platform,
       dto.token,
       userAgent,
+      dto.platform === 'ANDROID' && dto.supportsLiveUpdate === true,
     );
   }
 
@@ -80,10 +81,11 @@ export class NotificationService {
   private async sendPushToUser(
     userUuid: string,
     payload: PushPayload,
+    options: { skipLiveUpdateDevices?: boolean } = {},
   ): Promise<boolean> {
     const results = await Promise.allSettled([
       this.webPushService.sendWebPushToUser(userUuid, payload),
-      this.fcmService.sendFcmToUser(userUuid, payload),
+      this.fcmService.sendFcmToUser(userUuid, payload, options),
     ]);
     const failure = results.find((r) => r.status === 'rejected');
     const delivered = results.some(
@@ -188,17 +190,24 @@ export class NotificationService {
       data: { type: 'machine-completion', machineUuid: machine.uuid },
     };
 
-    await this.sendPushToUser(userUuid, payload);
+    // Live Update devices get the END state as a data message instead.
+    await this.sendPushToUser(userUuid, payload, {
+      skipLiveUpdateDevices: true,
+    });
   }
 
   async notifyMachineError(userUuid: string, machine: Machine): Promise<void> {
     const typeName = this.machineTypeName(machine.type);
-    await this.sendPushToUser(userUuid, {
-      title: `${typeName} 오류 알림 🧺`,
-      body: `${machine.location}동 ${machine.index}번 ${typeName}에 오류가 발생했습니다. 기기를 확인해 주세요.`,
-      url: '/',
-      data: { type: 'machine-error', machineUuid: machine.uuid },
-    });
+    await this.sendPushToUser(
+      userUuid,
+      {
+        title: `${typeName} 오류 알림 🧺`,
+        body: `${machine.location}동 ${machine.index}번 ${typeName}에 오류가 발생했습니다. 기기를 확인해 주세요.`,
+        url: '/',
+        data: { type: 'machine-error', machineUuid: machine.uuid },
+      },
+      { skipLiveUpdateDevices: true },
+    );
   }
 
   async notifyMachineReregistered(
@@ -206,12 +215,16 @@ export class NotificationService {
     machine: Machine,
   ): Promise<void> {
     const typeName = this.machineTypeName(machine.type);
-    await this.sendPushToUser(userUuid, {
-      title: `${typeName} 사용 종료 알림 🧺`,
-      body: `${machine.location}동 ${machine.index}번 ${typeName}: 다른 사용자가 완료를 확인하고 기기를 등록했어요`,
-      url: '/',
-      data: { type: 'machine-reregistered', machineUuid: machine.uuid },
-    });
+    await this.sendPushToUser(
+      userUuid,
+      {
+        title: `${typeName} 사용 종료 알림 🧺`,
+        body: `${machine.location}동 ${machine.index}번 ${typeName}: 다른 사용자가 완료를 확인하고 기기를 등록했어요`,
+        url: '/',
+        data: { type: 'machine-reregistered', machineUuid: machine.uuid },
+      },
+      { skipLiveUpdateDevices: true },
+    );
   }
 
   async notifyLaundryRoomAvailable(

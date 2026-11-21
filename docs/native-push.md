@@ -132,3 +132,46 @@ FCM에서는 `notification`(title/body) + data map으로 전달하며 data 값�
 | `APNS_BUNDLE_ID` | 아니오 | iOS 앱 번들 ID. `apns-topic`은 `<번들 ID>.push-type.liveactivity` |
 
 키 하나로 SANDBOX/PRODUCTION 모두 발송한다. 위 FCM용으로 올린 .p8을 재사용할 수 있지만 서버에도 별도로 주입해야 한다.
+
+## Android Live Update (FCM data-only)
+
+Android 16 Live Update(`Notification.ProgressStyle`)는 서버 `notification` 페이로드로 만들 수 없어, 앱이 **data-only 메시지**를 받아 로컬에서 알림을 게시/갱신한다. 새 토큰 API는 없고 기존 `POST /notification/register/native`를 쓴다.
+
+### 구독 플래그와 중복 방지
+
+`POST /notification/register/native` body에 optional `supportsLiveUpdate: boolean`을 추가했다(`user_push_subscription.supports_live_update`, 기본 `false`).
+
+- `platform: ANDROID` + `supportsLiveUpdate: true`인 구독만 Live Update 대상이다. iOS에서 보내면 무시(`false` 저장)한다.
+- 이 구독에는 상태 전이 알림(`machine-completion`, `machine-error`, `machine-reregistered`)의 일반 `notification` 푸시를 **보내지 않고** Live Update 메시지(`END`/`ERROR` 상태)만 보낸다. 빈 기기 알림(`laundry-room-available`) 등 세션과 무관한 푸시는 그대로 간다.
+- 값은 토큰 기준 upsert 시 매번 덮어쓴다. 재등록 때 생략하면 `false`로 돌아가므로 앱은 등록할 때마다 값을 함께 보내야 한다. 기존 구독은 마이그레이션 기본값 `false`라 동작이 바뀌지 않는다.
+
+### 메시지
+
+`notification` 없이 `data`만, `android.priority: "high"`. 모든 값은 문자열이며 **null 값은 키를 생략**한다(빈 문자열을 보내지 않는다). 시간은 epoch 초, 분은 10진 문자열.
+
+| 키 | 항상 존재 | 설명 |
+| --- | --- | --- |
+| `type` | O | 항상 `LIVE_UPDATE` |
+| `machineUuid` | O | 기계 UUID. 알림 ID/갱신 키로 사용 |
+| `kind` | O | `WASHER` \| `DRYER` |
+| `title` | O | 예: `A동 건조기 3번` |
+| `state` | O | `RUNNING` \| `COOLING` \| `PAUSE` \| `DETECTING` \| `END` \| `ERROR` |
+| `updatedAt` | O | 이 상태를 계산한 시각 |
+| `startedAt` | 알 때만 | 세션 시작 시각. 사용자가 추적을 해제해 보내는 `END`에는 없다 |
+| `endsAt` | 알 때만 | 예상 종료 시각. 남은 시간을 모르면(`DETECTING` 등) 생략 |
+| `remainingMinutes` | 알 때만 | 남은 분. 모르면 생략 |
+
+`END`(`endsAt`=현재, `remainingMinutes`=`0`)와 `ERROR`가 종료 신호다. 카운트다운은 앱이 `endsAt`으로 로컬 처리하며 주기 푸시는 없다.
+
+### 발송 시점
+
+세션 owner(`using_machine.user_uuid`)의 구독에만 보낸다.
+
+| 시점 | 메시지 |
+| --- | --- |
+| ThinQ 건조기 진행 중 **상태가 바뀔 때**(또는 세션 owner가 바뀌었을 때) | 해당 `state`. 같은 상태가 반복되면 보내지 않는다. 기기에 닿지 못하면 다음 동기화에서 재시도 |
+| 세션 종료(`finishUsingMachine`) | `END` (`notifyOnCompletion`과 무관) |
+| 다른 사용자가 완료 확인 후 기계를 재등록 | 이전 사용자에게 `END` |
+| 사용자가 `DELETE /machine/:uuid/register`로 추적 해제 | 그 사용자에게 `END` |
+
+dedupe 상태는 메모리라 서버 재시작 후 한 번 더 갈 수 있다. 무효 토큰(`UNREGISTERED` 등)은 일반 푸시와 같은 방식으로 구독을 삭제한다.

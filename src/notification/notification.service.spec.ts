@@ -407,8 +407,53 @@ describe('push fan-out and device registration', () => {
       'user-1',
       payload,
     );
-    expect(fcmService.sendFcmToUser).toHaveBeenCalledWith('user-1', payload);
+    // Live Update devices get the same event as a data-only message instead.
+    expect(fcmService.sendFcmToUser).toHaveBeenCalledWith('user-1', payload, {
+      skipLiveUpdateDevices: true,
+    });
   });
+
+  it('skips Live Update devices for error and re-registration pushes', async () => {
+    webPushService.sendWebPushToUser.mockResolvedValue(true);
+    fcmService.sendFcmToUser.mockResolvedValue(true);
+    await service.notifyMachineError('user-1', machine);
+    await service.notifyMachineReregistered('user-1', machine);
+    expect(fcmService.sendFcmToUser).toHaveBeenNthCalledWith(
+      1,
+      'user-1',
+      expect.anything(),
+      { skipLiveUpdateDevices: true },
+    );
+    expect(fcmService.sendFcmToUser).toHaveBeenNthCalledWith(
+      2,
+      'user-1',
+      expect.anything(),
+      { skipLiveUpdateDevices: true },
+    );
+  });
+
+  it.each([
+    ['ANDROID', true, true],
+    ['ANDROID', undefined, false],
+    ['ANDROID', false, false],
+    ['IOS', true, false],
+  ] as const)(
+    'stores supportsLiveUpdate for %s with %s as %s',
+    async (platform, supportsLiveUpdate, stored) => {
+      await service.registerNativePush(
+        'user-1',
+        { platform, token: 't', supportsLiveUpdate },
+        'ua',
+      );
+      expect(repository.registerNativePush).toHaveBeenCalledWith(
+        'user-1',
+        platform,
+        't',
+        'ua',
+        stored,
+      );
+    },
+  );
 
   it('still reaches FCM when Web Push throws, and vice versa', async () => {
     webPushService.sendWebPushToUser.mockRejectedValue(new Error('db'));
@@ -471,6 +516,7 @@ describe('push fan-out and device registration', () => {
           machineType: 'WASHER',
         },
       }),
+      {},
     );
     expect(complete).toHaveBeenCalledWith([
       expect.objectContaining({ uuid: 'sub-1' }),
@@ -488,6 +534,7 @@ describe('push fan-out and device registration', () => {
       'IOS',
       'tok',
       'UA',
+      false,
     );
     await service.unregisterNativePush('user-1', 'tok');
     expect(repository.unregisterNativePush).toHaveBeenCalledWith(

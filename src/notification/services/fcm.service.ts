@@ -114,41 +114,70 @@ export class FcmService implements OnModuleInit {
     );
   }
 
+  /** Data-only message: the app builds and updates the Live Update itself. */
+  buildLiveUpdateMessage(token: string, data: Record<string, string>): Message {
+    return { token, data, android: { priority: 'high' } };
+  }
+
   // Send an FCM notification to all native devices of a user.
   // Resolves true only if at least one device actually accepted the push.
+  // `skipLiveUpdateDevices` leaves out Android devices that show the same
+  // event as a Live Update (they receive it via sendLiveUpdateToUser).
   async sendFcmToUser(
     userUuid: string,
     payload: PushPayload,
+    options: { skipLiveUpdateDevices?: boolean } = {},
   ): Promise<boolean> {
     if (!this.messaging) return false;
-    const messaging = this.messaging;
 
+    const devices = (
+      await this.notificationRepository.getUserNativePushDevices(userUuid)
+    ).filter(
+      (device) => !(options.skipLiveUpdateDevices && device.supportsLiveUpdate),
+    );
+    const results = await this.deliver(userUuid, devices, (token) =>
+      this.buildMessage(token, payload),
+    );
+    return results.includes('sent');
+  }
+
+  /**
+   * Sends a Live Update data message to the Android devices of a user that
+   * opted in. Returns how many devices accepted it and how many could not be
+   * reached (retryable); dead tokens count as neither.
+   */
+  async sendLiveUpdateToUser(
+    userUuid: string,
+    data: Record<string, string>,
+  ): Promise<{ sent: number; failed: number }> {
+    if (!this.messaging) return { sent: 0, failed: 0 };
     const devices =
-      await this.notificationRepository.getUserNativePushDevices(userUuid);
-    if (devices.length === 0) return false;
+      await this.notificationRepository.getUserLiveUpdateDevices(userUuid);
+    const results = await this.deliver(userUuid, devices, (token) =>
+      this.buildLiveUpdateMessage(token, data),
+    );
+    return {
+      sent: results.filter((r) => r === 'sent').length,
+      failed: results.filter((r) => r === 'failed').length,
+    };
+  }
 
-    let delivered = false;
+  private async deliver(
+    userUuid: string,
+    devices: { uuid: string; fcmToken: string | null }[],
+    build: (token: string) => Message,
+  ): Promise<('sent' | 'dead' | 'failed' | 'skipped')[]> {
+    const messaging = this.messaging;
+    if (!messaging) return [];
 
-    await Promise.all(
+    return await Promise.all(
       devices.map(async (device) => {
         const token = device.fcmToken;
-        if (!token) return;
+        if (!token) return 'skipped' as const;
         const maskedToken = this.maskToken(token);
 
         try {
-          await messaging.send(this.buildMessage(token, payload));
-          delivered = true;
-
-          try {
-            await this.notificationRepository.markPushSubscriptionActivated(
-              device.uuid,
-              new Date(),
-            );
-          } catch (activationError: unknown) {
-            this.logger.error(
-              `Failed to record successful FCM push for token ${maskedToken}: ${formatError(activationError)}`,
-            );
-          }
+          await messaging.send(build(token));
         } catch (error: unknown) {
           if (this.isDeadToken(error)) {
             this.logger.warn(
@@ -164,15 +193,26 @@ export class FcmService implements OnModuleInit {
                 `Failed to auto-cleanup invalid FCM token ${maskedToken}: ${formatError(cleanupError)}`,
               );
             }
-          } else {
-            this.logger.error(
-              `Failed to send FCM push to token ${maskedToken}: ${formatError(error)}`,
-            );
+            return 'dead' as const;
           }
+          this.logger.error(
+            `Failed to send FCM push to token ${maskedToken}: ${formatError(error)}`,
+          );
+          return 'failed' as const;
         }
+
+        try {
+          await this.notificationRepository.markPushSubscriptionActivated(
+            device.uuid,
+            new Date(),
+          );
+        } catch (activationError: unknown) {
+          this.logger.error(
+            `Failed to record successful FCM push for token ${maskedToken}: ${formatError(activationError)}`,
+          );
+        }
+        return 'sent' as const;
       }),
     );
-
-    return delivered;
   }
 }

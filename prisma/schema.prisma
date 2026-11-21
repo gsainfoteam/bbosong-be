@@ -203,18 +203,21 @@ model MachinePower {
 }
 
 model UserPushSubscription {
-  uuid            String       @id @default(uuid()) @db.Uuid
-  userUuid        String       @map("user_uuid") @db.Uuid
-  platform        PushPlatform @default(WEB) @map("platform")
+  uuid               String       @id @default(uuid()) @db.Uuid
+  userUuid           String       @map("user_uuid") @db.Uuid
+  platform           PushPlatform @default(WEB) @map("platform")
   // Web Push credentials; null for native (FCM) devices.
-  endpoint        String?      @unique @map("endpoint")
-  p256dh          String?      @map("p256dh")
-  auth            String?      @map("auth")
+  endpoint           String?      @unique @map("endpoint")
+  p256dh             String?      @map("p256dh")
+  auth               String?      @map("auth")
   // FCM registration token; null for Web Push subscriptions.
-  fcmToken        String?      @unique @map("fcm_token")
-  userAgent       String?      @map("user_agent")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  lastActivatedAt DateTime?    @map("last_activated_at")
+  fcmToken           String?      @unique @map("fcm_token")
+  // Android app shows Live Update notifications from FCM data-only messages;
+  // the regular alert push is then skipped for this device.
+  supportsLiveUpdate Boolean      @default(false) @map("supports_live_update")
+  userAgent          String?      @map("user_agent")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  lastActivatedAt    DateTime?    @map("last_activated_at")
 
   user User @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
 
