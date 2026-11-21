@@ -5,7 +5,6 @@ import {
   Location,
   Machine,
   MachineType,
-  Role,
 } from 'generated/prisma/client';
 
 jest.mock('@gsainfoteam/nest-observability', () => ({
@@ -17,23 +16,22 @@ jest.mock('@lib/logger', () => ({
 jest.mock('@lib/database/database.service', () => ({}));
 jest.mock('./services/web-push.service', () => ({}));
 jest.mock('./services/fcm.service', () => ({}));
+jest.mock('./services/slack-webhook.service', () => ({}));
 jest.mock('generated/prisma/client', () =>
   jest.requireActual<typeof import('../../generated/prisma/enums')>(
     '../../generated/prisma/enums',
   ),
 );
 
-it('sends offline alerts only to active administrators with existing push subscriptions', async () => {
-  const findMany = jest.fn().mockResolvedValue([{ uuid: 'admin-1' }]);
-  const repository = new NotificationRepository({
-    user: { findMany },
-  } as never);
-  const sendWebPushToUser = jest.fn().mockResolvedValue(undefined);
+it('sends offline alerts to Slack only, without any push', async () => {
+  const sendWebPushToUser = jest.fn();
+  const slackSend = jest.fn().mockResolvedValue(undefined);
   const service = new NotificationService(
-    repository,
-    { sendWebPushToUser } as never,
-    { sendFcmToUser: jest.fn().mockResolvedValue(false) } as never,
     {} as never,
+    { sendWebPushToUser } as never,
+    { sendFcmToUser: jest.fn() } as never,
+    {} as never,
+    { send: slackSend } as never,
   );
   await service.notifyMachineOffline({
     uuid: 'machine-1',
@@ -42,21 +40,38 @@ it('sends offline alerts only to active administrators with existing push subscr
     type: MachineType.DRYER,
     index: 2,
   } as Machine);
-  expect(findMany).toHaveBeenCalledWith({
-    where: {
-      deletedAt: null,
-      role: Role.ADMIN,
-      pushSubscriptions: { some: {} },
-    },
-    select: { uuid: true },
-  });
-  expect(sendWebPushToUser).toHaveBeenCalledTimes(1);
-  expect(sendWebPushToUser).toHaveBeenCalledWith('admin-1', {
-    title: '기기 연결 끊김 알림',
-    body: 'B동 여성 세탁실 2번 건조기의 연결이 끊겼습니다. 기기와 네트워크를 확인해 주세요.',
-    url: '/admin/machines',
-    data: { type: 'machine-offline', machineUuid: 'machine-1' },
-  });
+  expect(sendWebPushToUser).not.toHaveBeenCalled();
+  expect(slackSend).toHaveBeenCalledWith(
+    ':warning: *기기 연결 끊김*\nB동 여성 세탁실 2번 건조기의 연결이 끊겼습니다. 기기와 네트워크를 확인해 주세요.',
+  );
+});
+
+it.each([
+  [45_000, '45초'],
+  [135_000, '2분 15초'],
+  [3_660_000, '1시간 1분'],
+])('sends recovery to Slack with downtime %i ms', async (ms, text) => {
+  const slackSend = jest.fn().mockResolvedValue(undefined);
+  const service = new NotificationService(
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    { send: slackSend } as never,
+  );
+  await service.notifyMachineOnline(
+    {
+      uuid: 'machine-1',
+      location: Location.B,
+      gender: Gender.MALE,
+      type: MachineType.WASHER,
+      index: 1,
+    } as Machine,
+    ms,
+  );
+  expect(slackSend).toHaveBeenCalledWith(
+    `:white_check_mark: *기기 연결 복구*\nB동 남성 세탁실 1번 세탁기의 연결이 복구되었습니다. (끊긴 시간: ${text})`,
+  );
 });
 
 it('sends dryer error alerts over the same web-push channel as completion', async () => {
@@ -67,6 +82,7 @@ it('sends dryer error alerts over the same web-push channel as completion', asyn
       sendWebPushToUser,
     } as never,
     { sendFcmToUser: jest.fn().mockResolvedValue(false) } as never,
+    {} as never,
     {} as never,
   );
   await service.notifyMachineError('user-1', {
@@ -103,6 +119,7 @@ describe('laundry room availability subscription', () => {
       webPushService as never,
       fcmService as never,
       machineRepository as never,
+      {} as never,
     );
     notificationRepository.createLaundryRoomSubscription.mockResolvedValue({
       subscription: { uuid: 'sub-1' },
@@ -302,6 +319,7 @@ describe('daily laundry room notification stats', () => {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
 
   it('rejects from after to', async () => {
@@ -371,6 +389,7 @@ describe('push fan-out and device registration', () => {
       webPushService as never,
       fcmService as never,
       {} as never,
+      {} as never,
     );
   });
 
@@ -433,6 +452,7 @@ describe('push fan-out and device registration', () => {
       webPushService as never,
       fcmService as never,
       { countAvailableMachines: jest.fn().mockResolvedValue(1) } as never,
+      {} as never,
     );
     webPushService.sendWebPushToUser.mockResolvedValue(false);
     fcmService.sendFcmToUser.mockResolvedValue(true);

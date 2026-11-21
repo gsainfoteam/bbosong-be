@@ -14,6 +14,7 @@ import {
 } from 'generated/prisma/client';
 import { WebPushService } from './services/web-push.service';
 import { FcmService } from './services/fcm.service';
+import { SlackWebhookService } from './services/slack-webhook.service';
 import { PushPayload } from './types/push-payload.type';
 import { RegisterNativePushReqDto } from './dto/req/register-native-push-req.dto';
 import { PrismaTransaction } from '@lib/database';
@@ -30,6 +31,7 @@ export class NotificationService {
     private readonly webPushService: WebPushService,
     private readonly fcmService: FcmService,
     private readonly machineRepository: MachineRepository,
+    private readonly slackWebhookService: SlackWebhookService,
   ) {}
 
   async registerPush(
@@ -290,20 +292,36 @@ export class NotificationService {
     );
   }
 
+  /** Admin connectivity alerts go to Slack only; no push is sent. */
   async notifyMachineOffline(machine: Machine): Promise<void> {
-    const recipients =
-      await this.notificationRepository.getAdminPushRecipients();
-    const typeName = this.machineTypeName(machine.type);
-    await Promise.all(
-      recipients.map(({ uuid }) =>
-        this.sendPushToUser(uuid, {
-          title: '기기 연결 끊김 알림',
-          body: `${machine.location}동 ${machine.gender === Gender.MALE ? '남성' : '여성'} 세탁실 ${machine.index}번 ${typeName}의 연결이 끊겼습니다. 기기와 네트워크를 확인해 주세요.`,
-          url: '/admin/machines',
-          data: { type: 'machine-offline', machineUuid: machine.uuid },
-        }),
-      ),
+    await this.slackWebhookService.send(
+      `:warning: *기기 연결 끊김*\n${this.machineLabel(machine)}의 연결이 끊겼습니다. 기기와 네트워크를 확인해 주세요.`,
     );
+  }
+
+  async notifyMachineOnline(
+    machine: Machine,
+    downtimeMs: number,
+  ): Promise<void> {
+    await this.slackWebhookService.send(
+      `:white_check_mark: *기기 연결 복구*\n${this.machineLabel(machine)}의 연결이 복구되었습니다. (끊긴 시간: ${this.formatDuration(downtimeMs)})`,
+    );
+  }
+
+  private machineLabel(machine: Machine): string {
+    return `${machine.location}동 ${machine.gender === Gender.MALE ? '남성' : '여성'} 세탁실 ${machine.index}번 ${this.machineTypeName(machine.type)}`;
+  }
+
+  private formatDuration(ms: number): string {
+    const total = Math.max(0, Math.round(ms / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const sec = total % 60;
+    const parts: string[] = [];
+    if (h) parts.push(`${h}시간`);
+    if (m) parts.push(`${m}분`);
+    if (sec || parts.length === 0) parts.push(`${sec}초`);
+    return parts.join(' ');
   }
 
   async deleteAllUserPushSubscriptionsInTx(
