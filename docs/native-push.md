@@ -161,7 +161,7 @@ Android 16 Live Update(`Notification.ProgressStyle`)는 서버 `notification` �
 | `endsAt` | 알 때만 | 예상 종료 시각. 남은 시간을 모르면(`DETECTING` 등) 생략 |
 | `remainingMinutes` | 알 때만 | 남은 분. 모르면 생략 |
 
-`END`(`endsAt`=현재, `remainingMinutes`=`0`)와 `ERROR`가 종료 신호다. 카운트다운은 앱이 `endsAt`으로 로컬 처리하며 주기 푸시는 없다. 같은 `state`로 다시 오는 메시지는 `endsAt` 보정이므로 앱은 알림을 새 값으로 갱신하면 된다.
+`END`(`endsAt`=현재, `remainingMinutes`=`0`)와 `ERROR`가 종료 신호다. OS가 진행 막대를 자동으로 움직여 주지 않으므로, 앱은 **메시지를 받을 때마다** `startedAt`~`endsAt` 구간으로 막대를 다시 계산해 알림을 갱신한다. 서버는 진행 중 세션에 주기적으로 tick(같은 `LIVE_UPDATE`, 새 필드 없음)을 보낸다. 같은 `state`로 다시 오는 메시지는 보정/tick이므로 앱은 알림을 새 값으로 갱신하면 된다. tick의 `state`/`endsAt`은 서버가 아는 최신 값, `remainingMinutes`는 tick 시점 기준(올림), `updatedAt`은 tick 시각이다.
 
 ### 발송 시점
 
@@ -171,8 +171,22 @@ Android 16 Live Update(`Notification.ProgressStyle`)는 서버 `notification` �
 | --- | --- |
 | ThinQ 건조기 진행 중 **상태가 바뀔 때**(또는 세션 owner가 바뀌었을 때) | 해당 `state`. 기기에 닿지 못하면 다음 동기화에서 재시도 |
 | 같은 상태에서 **종료 예상 시각이 2분 이상 어긋났을 때**(또는 남은 시간이 알려지거나 사라졌을 때) | 갱신된 `endsAt`/`remainingMinutes`. 세션당 60초 간격 제한. iOS Live Activity와 같은 규칙 |
+| 위 메시지(전이/보정/tick) 중 마지막 발송 후 **tick 간격**이 지났고 `endsAt`을 알 때(`RUNNING`/`COOLING`/`PAUSE`, 아직 `endsAt` 전) | tick. 상태 전이·보정 발송 시점부터 타이머가 다시 시작돼 직후 중복 발송이 없다. 일부 기기 전송 실패 시 다음 tick에서 다시 시도한다 |
 | 세션 종료(`finishUsingMachine`) | `END` (`notifyOnCompletion`과 무관) |
 | 다른 사용자가 완료 확인 후 기계를 재등록 | 이전 사용자에게 `END` |
 | 사용자가 `DELETE /machine/:uuid/register`로 추적 해제 | 그 사용자에게 `END` |
 
-dedupe 상태는 메모리라 서버 재시작 후 한 번 더 갈 수 있다. 무효 토큰(`UNREGISTERED` 등)은 일반 푸시와 같은 방식으로 구독을 삭제한다.
+tick은 `endsAt`을 모르는 상태(`DETECTING` 등), `END`/`ERROR`, 세탁기, `endsAt`이 지난 세션에는 보내지 않는다. 세션 종료·추적 해제·owner 변경(이전 owner)이면 중단하고, owner의 Live Update 기기가 하나도 없으면(구독 해제/`supportsLiveUpdate=false`) 그 세션의 tick을 멈춘다(다음 ThinQ 동기화에서 다시 등록).
+
+### tick 설정
+
+| 환경 변수 | 필수 | 설명 |
+| --- | --- | --- |
+| `LIVE_UPDATE_TICK_INTERVAL_SECONDS` | 아니오 | tick 간격(초). 기본 `180`, 허용 `60`~`3600`(범위 밖/잘못된 값은 기본값), `0`이면 tick 비활성화. 서버는 15초마다 만료된 세션을 확인하므로 실제 간격은 최대 15초 늦을 수 있다 |
+
+### 한계
+
+- dedupe/tick 상태는 **메모리**다. 서버 재시작 후에는 전이 메시지가 한 번 더 갈 수 있고, 세션이 다음 ThinQ 동기화(MQTT 이벤트 또는 REST 보정)로 다시 등록될 때까지 tick이 멈춘다.
+- 다중 인스턴스 간 조정(락/리더 선출)은 없다. ThinQ 동기화·MQTT·기존 Live Update 전이 발송과 마찬가지로 단일 인스턴스를 전제로 하며, 여러 인스턴스를 띄우면 인스턴스 수만큼 tick이 중복 발송된다.
+
+무효 토큰(`UNREGISTERED` 등)은 일반 푸시와 같은 방식으로 구독을 삭제한다.
