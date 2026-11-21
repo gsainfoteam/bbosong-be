@@ -8,6 +8,7 @@ import { ApnsHttpClient } from './services/apns-http-client';
 import { ApnsService } from './services/apns.service';
 import { SlackWebhookService } from './services/slack-webhook.service';
 import { LiveActivityService } from './services/live-activity.service';
+import { LiveUpdateService } from './services/live-update.service';
 
 @Module({
   imports: [DatabaseModule],
@@ -19,6 +20,7 @@ import { LiveActivityService } from './services/live-activity.service';
     ApnsHttpClient,
     ApnsService,
     LiveActivityService,
+    LiveUpdateService,
     SlackWebhookService,
   ],
   exports: [
@@ -27,6 +29,7 @@ import { LiveActivityService } from './services/live-activity.service';
     FcmService,
     ApnsService,
     LiveActivityService,
+    LiveUpdateService,
   ],
 })
 export class NotificationModule {}

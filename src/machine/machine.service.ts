@@ -14,6 +14,8 @@ import {
 } from '@lib/database/types/machine.type';
 import { Loggable } from '@lib/logger';
 import { LiveActivityService } from '../notification/services/live-activity.service';
+import { LiveUpdateService } from '../notification/services/live-update.service';
+import { buildLiveUpdateSession } from '../notification/types/live-update.type';
 import { RegisterLiveActivityReqDto } from './dto/req/register-live-activity-req.dto';
 import { MatterConnectionService } from '@lib/matter-client/matter-connection.service';
 import {
@@ -80,6 +82,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     private readonly shlinkService: ShlinkService,
     private readonly configService: ConfigService,
     private readonly liveActivityService: LiveActivityService,
+    private readonly liveUpdateService: LiveUpdateService,
   ) {}
 
   async onModuleInit() {
@@ -517,6 +520,16 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
           ),
         `Live Activity update for machine ${uuid}`,
       );
+      await this.dispatchNotification(
+        () =>
+          this.liveUpdateService.syncRunning(
+            usingMachine.uuid,
+            usingMachine.userUuid,
+            buildLiveUpdateSession(machine, usingMachine.startedAt),
+            { state: currentState ?? null, remainingMinutes },
+          ),
+        `Live Update for machine ${uuid}`,
+      );
     } else {
       await this.finishUsingMachine(uuid);
     }
@@ -617,6 +630,15 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         ),
       `Live Activity completion for machine ${machineUuid}`,
     );
+    await this.dispatchNotification(
+      () =>
+        this.liveUpdateService.end(
+          previous.uuid,
+          previous.userUuid,
+          buildLiveUpdateSession(machine, previous.startedAt),
+        ),
+      `Live Update completion for machine ${machineUuid}`,
+    );
     if (previous.userUuid) {
       await this.dispatchNotification(
         () =>
@@ -705,6 +727,15 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       () => this.liveActivityService.endForUserOnMachine(userUuid, machineUuid),
       `Live Activity end for user unlinking machine ${machineUuid}`,
     );
+    await this.dispatchNotification(async () => {
+      const machine = await this.machineRepository.getMachine(machineUuid);
+      if (!machine) return;
+      await this.liveUpdateService.end(
+        null,
+        userUuid,
+        buildLiveUpdateSession(machine, null),
+      );
+    }, `Live Update end for user unlinking machine ${machineUuid}`);
     this.ensureMachineOperationAffected(count);
   }
 
@@ -835,6 +866,15 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
             usingMachine.userUuid,
           ),
         `Live Activity completion for machine ${machineUuid}`,
+      ),
+      this.dispatchNotification(
+        () =>
+          this.liveUpdateService.end(
+            usingMachine.uuid,
+            usingMachine.userUuid,
+            buildLiveUpdateSession(machine, usingMachine.startedAt),
+          ),
+        `Live Update completion for machine ${machineUuid}`,
       ),
     ]);
 

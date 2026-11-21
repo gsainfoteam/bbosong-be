@@ -74,13 +74,14 @@ export class NotificationRepository {
     platform: Exclude<PushPlatform, 'WEB'>,
     fcmToken: string,
     userAgent?: string,
+    supportsLiveUpdate = false,
   ) {
     return this.run(
       'registerNativePush',
       this.databaseService.userPushSubscription.upsert({
         where: { fcmToken },
-        create: { userUuid, platform, fcmToken, userAgent },
-        update: { userUuid, platform, userAgent },
+        create: { userUuid, platform, fcmToken, userAgent, supportsLiveUpdate },
+        update: { userUuid, platform, userAgent, supportsLiveUpdate },
       }),
     );
   }
@@ -119,6 +120,20 @@ export class NotificationRepository {
         where: {
           userUuid,
           platform: { in: [PushPlatform.IOS, PushPlatform.ANDROID] },
+        },
+      }),
+    );
+  }
+
+  /** Android devices whose app renders Live Update notifications from FCM data. */
+  async getUserLiveUpdateDevices(userUuid: string) {
+    return this.run(
+      'getUserLiveUpdateDevices',
+      this.databaseService.userPushSubscription.findMany({
+        where: {
+          userUuid,
+          platform: PushPlatform.ANDROID,
+          supportsLiveUpdate: true,
         },
       }),
     );

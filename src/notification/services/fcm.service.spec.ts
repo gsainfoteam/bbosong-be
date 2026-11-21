@@ -29,6 +29,7 @@ describe('FcmService', () => {
   ];
   const repository = {
     getUserNativePushDevices: jest.fn(),
+    getUserLiveUpdateDevices: jest.fn(),
     markPushSubscriptionActivated: jest.fn(),
     unregisterNativePush: jest.fn(),
   };
@@ -155,5 +156,74 @@ describe('FcmService', () => {
     expect(() => bad.onModuleInit()).toThrow(
       'FIREBASE_SERVICE_ACCOUNT_JSON must be',
     );
+  });
+
+  describe('Live Update', () => {
+    const data = { type: 'LIVE_UPDATE', state: 'RUNNING' };
+
+    it('sends a data-only high-priority message without notification', async () => {
+      repository.getUserLiveUpdateDevices.mockResolvedValue([devices[0]]);
+      await expect(
+        create().sendLiveUpdateToUser('user', data),
+      ).resolves.toEqual({ sent: 1, failed: 0 });
+      expect(sentMessage(0)).toEqual({
+        token: 'token-1-aaaaaaaaaaaa',
+        data,
+        android: { priority: 'high' },
+      });
+      expect(sentMessage(0)).not.toHaveProperty('notification');
+      expect(repository.markPushSubscriptionActivated).toHaveBeenCalledWith(
+        'device-1',
+        sentAt,
+      );
+    });
+
+    it('cleans up dead tokens like regular pushes and does not count them as failures', async () => {
+      repository.getUserLiveUpdateDevices.mockResolvedValue(devices);
+      send
+        .mockRejectedValueOnce(
+          fcmError('messaging/registration-token-not-registered'),
+        )
+        .mockRejectedValueOnce(fcmError('messaging/internal-error'));
+      await expect(
+        create().sendLiveUpdateToUser('user', data),
+      ).resolves.toEqual({ sent: 0, failed: 1 });
+      expect(repository.unregisterNativePush).toHaveBeenCalledTimes(1);
+      expect(repository.unregisterNativePush).toHaveBeenCalledWith(
+        'user',
+        'token-1-aaaaaaaaaaaa',
+      );
+    });
+
+    it('does nothing when FCM is disabled', async () => {
+      const service = new FcmService(
+        new ConfigService({}),
+        repository as unknown as NotificationRepository,
+      );
+      service.onModuleInit();
+      await expect(service.sendLiveUpdateToUser('user', data)).resolves.toEqual(
+        {
+          sent: 0,
+          failed: 0,
+        },
+      );
+      expect(repository.getUserLiveUpdateDevices).not.toHaveBeenCalled();
+    });
+
+    it('regular pushes skip Live Update devices only when asked', async () => {
+      repository.getUserNativePushDevices.mockResolvedValue([
+        { ...devices[0], supportsLiveUpdate: true },
+        { ...devices[1], supportsLiveUpdate: false },
+      ]);
+      await create().sendFcmToUser('user', payload, {
+        skipLiveUpdateDevices: true,
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(sentMessage(0)).toMatchObject({ token: 'token-2-bbbbbbbbbbbb' });
+
+      send.mockClear();
+      await create().sendFcmToUser('user', payload);
+      expect(send).toHaveBeenCalledTimes(2);
+    });
   });
 });
