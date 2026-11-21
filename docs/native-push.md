@@ -109,6 +109,7 @@ FCM에서는 `notification`(title/body) + data map으로 전달하며 data 값�
 | ThinQ 건조기 진행 중 상태/남은 시간 변경 | `update` | 상태가 바뀌면 즉시(priority 10), 종료 예상 시각이 2분 이상 어긋났을 때만(priority 5, 세션당 60초 간격 제한). 카운트다운 자체는 앱이 `Text(timerInterval:)`로 그린다 |
 | 세션 종료(`finishUsingMachine`) | `update` (`state: END`) | **`end`를 보내지 않는다.** 완료 후에도 Dynamic Island/잠금화면에 남는다. 토큰도 유지. `notifyOnCompletion`과 무관 |
 | 같은 기계에서 새 세션 시작, 또는 다른 사용자의 완료 확인 후 재등록 | `end` | 지난 세션의 "완료" activity를 즉시 제거하고 토큰 삭제 |
+| 사용자가 `DELETE /machine/:uuid/register`로 기계 추적을 해제 | `end` | 그 사용자의 해당 기계 activity(진행 중·완료 상태 모두)를 즉시 제거하고 토큰 삭제 |
 | 앱이 로컬에서 `activity.end` (수거 확인 등) | - | 앱이 `DELETE /machine/:uuid/live-activity`로 토큰을 정리 |
 
 - 완료 후 activity는 앱이 끝내거나 위 서버 `end`가 올 때까지 남는다. iOS는 시작 후 최대 8시간이면 시스템이 종료한다. 9시간 이상 지난 토큰은 등록 시 정리한다.

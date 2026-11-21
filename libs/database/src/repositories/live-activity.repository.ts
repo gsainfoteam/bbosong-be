@@ -79,6 +79,19 @@ export class LiveActivityRepository {
     );
   }
 
+  /** Tokens of the user on any session of the machine. */
+  async getUserTokensOnMachine(
+    userUuid: string,
+    machineUuid: string,
+  ): Promise<LiveActivityToken[]> {
+    return this.run(
+      'getUserTokensOnMachine',
+      this.databaseService.liveActivityToken.findMany({
+        where: { userUuid, usingMachine: { machineUuid } },
+      }),
+    );
+  }
+
   /** Removes a token owned by the user; unknown or foreign tokens are ignored. */
   async deleteUserToken(userUuid: string, pushToken: string): Promise<number> {
     const result = await this.run(

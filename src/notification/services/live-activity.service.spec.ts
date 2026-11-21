@@ -27,6 +27,7 @@ describe('LiveActivityService', () => {
     deleteTokens: jest.fn(),
     getTokensByUsingMachine: jest.fn(),
     getTokensOfOtherSessions: jest.fn(),
+    getUserTokensOnMachine: jest.fn(),
   };
   const apns = {
     isEnabled: jest.fn(),
@@ -127,6 +128,25 @@ describe('LiveActivityService', () => {
       await service.endForUsingMachine('usage-1', now);
       expect(apns.sendLiveActivityEnd).not.toHaveBeenCalled();
       expect(repository.deleteTokens).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('endForUserOnMachine', () => {
+    it("ends the user's Live Activities on the machine and forgets them", async () => {
+      repository.getUserTokensOnMachine.mockResolvedValue(tokens);
+      await service.endForUserOnMachine('user-1', 'machine-1', now);
+      expect(repository.getUserTokensOnMachine).toHaveBeenCalledWith(
+        'user-1',
+        'machine-1',
+      );
+      expect(apns.sendLiveActivityEnd).toHaveBeenCalledTimes(2);
+      expect(repository.deleteTokens).toHaveBeenCalledWith(['aa', 'bb']);
+    });
+
+    it('does nothing when the user has none', async () => {
+      repository.getUserTokensOnMachine.mockResolvedValue([]);
+      await service.endForUserOnMachine('user-1', 'machine-1', now);
+      expect(apns.sendLiveActivityEnd).not.toHaveBeenCalled();
     });
   });
 

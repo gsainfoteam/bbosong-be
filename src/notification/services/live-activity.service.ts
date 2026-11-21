@@ -173,6 +173,22 @@ export class LiveActivityService {
   }
 
   /**
+   * The user stopped tracking the machine: end their Live Activities on it
+   * (the running session and any finished one still showing "done").
+   */
+  async endForUserOnMachine(
+    userUuid: string,
+    machineUuid: string,
+    now: Date = new Date(),
+  ): Promise<void> {
+    const tokens = await this.liveActivityRepository.getUserTokensOnMachine(
+      userUuid,
+      machineUuid,
+    );
+    await this.endAndForget(tokens, now);
+  }
+
+  /**
    * A new session started on the machine: finished sessions still showing
    * "done" are obsolete, so end them. Remembered per machine because this is
    * called on every ThinQ event of a running dryer.

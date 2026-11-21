@@ -74,6 +74,7 @@ describe('MachineService access and registration', () => {
   const usingMachineRepository = {
     confirmCompletedAndRegister: jest.fn(),
     finishUsingMachine: jest.fn(),
+    unlinkUserFromUsingMachine: jest.fn(),
     enableMachineNotification: jest.fn(),
     getUsingMachineByMachineUuid: jest.fn(),
     getLatestEndedUsingMachineByUser: jest.fn(),
@@ -86,6 +87,7 @@ describe('MachineService access and registration', () => {
     completeForUsingMachine: jest.fn(),
     endForUsingMachine: jest.fn(),
     endStaleForMachine: jest.fn(),
+    endForUserOnMachine: jest.fn(),
     syncRunning: jest.fn(),
     registerCompletedToken: jest.fn(),
     registerToken: jest.fn(),
@@ -459,6 +461,23 @@ describe('MachineService access and registration', () => {
     expect(liveActivityService.endForUsingMachine).toHaveBeenCalledWith(
       'previous-usage',
     );
+  });
+
+  it("ends the user's Live Activities when they unlink from the machine", async () => {
+    usingMachineRepository.unlinkUserFromUsingMachine.mockResolvedValue(1);
+    await service.unlinkUserFromMachine(userUuid, machineUuid);
+    expect(liveActivityService.endForUserOnMachine).toHaveBeenCalledWith(
+      userUuid,
+      machineUuid,
+    );
+  });
+
+  it('keeps Live Activities when nothing was unlinked', async () => {
+    usingMachineRepository.unlinkUserFromUsingMachine.mockResolvedValue(0);
+    await expect(
+      service.unlinkUserFromMachine(userUuid, machineUuid),
+    ).rejects.toThrow(NotFoundException);
+    expect(liveActivityService.endForUserOnMachine).not.toHaveBeenCalled();
   });
 
   it('ends obsolete Live Activities when a session starts', async () => {

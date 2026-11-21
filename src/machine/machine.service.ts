@@ -690,6 +690,10 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       machineUuid,
     );
     this.ensureMachineOperationAffected(count);
+    await this.dispatchNotification(
+      () => this.liveActivityService.endForUserOnMachine(userUuid, machineUuid),
+      `Live Activity end for user unlinking machine ${machineUuid}`,
+    );
   }
 
   /**
