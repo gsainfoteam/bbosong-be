@@ -289,6 +289,27 @@ export class UsingMachineRepository {
       });
   }
 
+  // Most recently ended session of the user on the machine (any age).
+  async getLatestEndedUsingMachineByUser(
+    userUuid: string,
+    machineUuid: string,
+  ): Promise<UsingMachine | null> {
+    return await this.databaseService.usingMachine
+      .findFirst({
+        where: {
+          userUuid,
+          machineUuid,
+          endedAt: { not: null },
+          machine: { deletedAt: null },
+        },
+        orderBy: [{ endedAt: 'desc' }, { uuid: 'desc' }],
+      })
+      .catch((error) => {
+        this.logger.error(`getLatestEndedUsingMachineByUser error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
+  }
+
   // Close and return the session atomically, retaining its user and timestamps.
   async finishUsingMachine(machineUuid: string): Promise<UsingMachine | null> {
     return this.databaseService

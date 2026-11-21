@@ -9,6 +9,7 @@ import {
   MachineRepository,
   NotificationRepository,
   UsingMachineRepository,
+  LiveActivityRepository,
 } from './repositories';
 import { PrismaMetricsService } from '@gsainfoteam/nest-observability';
 
@@ -23,6 +24,7 @@ import { PrismaMetricsService } from '@gsainfoteam/nest-observability';
     MachineRepository,
     NotificationRepository,
     UsingMachineRepository,
+    LiveActivityRepository,
     PrismaMetricsService,
   ],
   exports: [
@@ -34,6 +36,7 @@ import { PrismaMetricsService } from '@gsainfoteam/nest-observability';
     MachineRepository,
     NotificationRepository,
     UsingMachineRepository,
+    LiveActivityRepository,
   ],
 })
 export class DatabaseModule {}

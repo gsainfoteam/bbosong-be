@@ -5,3 +5,4 @@ export * from './audit-log.repository';
 export * from './machine.repository';
 export * from './notification.repository';
 export * from './using-machine.repository';
+export * from './live-activity.repository';

@@ -85,3 +85,42 @@ FCM에서는 `notification`(title/body) + data map으로 전달하며 data 값�
 5. 서비스 계정 JSON을 gitops 시크릿에 `FIREBASE_SERVICE_ACCOUNT_JSON`으로 등록한다(staging → production). 필요하면 `FCM_ANDROID_CHANNEL_ID`도 추가한다.
 6. 앱에서 `FCM_ANDROID_CHANNEL_ID`와 같은 ID로 Android 알림 채널을 생성한다.
 7. 배포 후 로그에 `FCM push to native devices is disabled` 경고가 없는지 확인하고, 테스트 기기에서 실제 수신을 확인한다.
+
+## iOS Live Activity (APNs 직접 발송)
+
+건조기 남은 시간을 잠금화면/Dynamic Island에 보여주는 Live Activity는 FCM으로 갱신할 수 없어, 서버가 APNs(`apns-push-type: liveactivity`)로 직접 보낸다. 기존 FCM 완료 알림(alert)과는 별개이며, Live Activity 종료(end)는 alert 없이 무음으로 보낸다.
+
+### API
+
+| 메서드 | 경로 | 설명 |
+| --- | --- | --- |
+| `POST` | `/machine/:uuid/live-activity` | Live Activity push token 등록. body `{ pushToken, environment }` |
+| `DELETE` | `/machine/:uuid/live-activity` | 등록 해제. body `{ pushToken }` (없는 토큰도 200) |
+
+- `pushToken`: ActivityKit `pushTokenUpdates`의 hex 문자열. **activity마다, 기기마다 다르고 도중에 바뀔 수 있으므로** 바뀔 때마다 다시 등록한다(upsert).
+- `environment`: `SANDBOX`(Debug 빌드) / `PRODUCTION`(TestFlight·App Store). 서버가 APNs 호스트(`api.sandbox.push.apple.com` / `api.push.apple.com`)를 고르는 데만 쓴다.
+- 요청한 사용자의 진행 중 세션이 있어야 한다(없으면 404, 남의 세션이면 403). 세션이 방금 끝났다면(8시간 이내) 토큰을 저장하지 않고 즉시 end를 보낸다.
+- 한 세션에 여러 기기의 토큰이 등록될 수 있고, 서버는 모두에게 보낸다. 기기 간 자동 전파는 없다(각 기기 앱이 자기 activity를 시작하고 토큰을 등록해야 한다).
+
+### 발송
+
+- 세션 종료(`MachineService.finishUsingMachine`) 시 해당 세션의 모든 토큰에 `event: end`를 보내고 토큰을 삭제한다. `notifyOnCompletion`과 무관하다.
+- 410 또는 400 `BadDeviceToken`/`DeviceTokenNotForTopic`은 무효 토큰으로 본다. 429/5xx/네트워크 오류는 최대 3회 시도한다. 8시간 이상 지난 토큰은 등록 시 정리한다.
+- content-state(키는 Swift `ContentState`의 `Codable` 키와 정확히 일치해야 한다. 시간은 epoch 초):
+
+```json
+{ "state": "END", "endsAt": 1790000000, "remainingMinutes": 0, "updatedAt": 1790000000 }
+```
+
+`state`는 `RUNNING | COOLING | PAUSE | DETECTING | END | ERROR`. end 후 `dismissal-date`는 5분 뒤다.
+
+### 환경변수
+
+| 이름 | 필수 | 설명 |
+| --- | --- | --- |
+| `APNS_KEY_P8` | 아니오 | APNs 인증 키(.p8) PEM 또는 그 base64. 비밀 값. 하나라도 미설정이면 Live Activity 발송은 비활성화(경고 로그)된다 |
+| `APNS_KEY_ID` | 아니오 | 키의 Key ID(10자) |
+| `APNS_TEAM_ID` | 아니오 | Apple Developer Team ID(10자) |
+| `APNS_BUNDLE_ID` | 아니오 | iOS 앱 번들 ID. `apns-topic`은 `<번들 ID>.push-type.liveactivity` |
+
+키 하나로 SANDBOX/PRODUCTION 모두 발송한다. 위 FCM용으로 올린 .p8을 재사용할 수 있지만 서버에도 별도로 주입해야 한다.

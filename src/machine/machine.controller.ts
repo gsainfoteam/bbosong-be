@@ -15,6 +15,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBadRequestResponse,
+  ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -56,6 +57,8 @@ import {
   GetUsingMachineResDto,
 } from './dto/res/get-using-machine-res.dto';
 import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto';
+import { RegisterLiveActivityReqDto } from './dto/req/register-live-activity-req.dto';
+import { UnregisterLiveActivityReqDto } from './dto/req/unregister-live-activity-req.dto';
 import { SuccessResDto } from '../common/dto/res/success-res.dto';
 import { ThinqService } from '../thinq/thinq.service';
 
@@ -520,6 +523,65 @@ export class MachineController {
         machineUuid,
       );
     }
+    return { success: true };
+  }
+
+  @Post('/:uuid/live-activity')
+  @ApiOperation({
+    summary: 'Register iOS Live Activity push token',
+    description:
+      "Register the APNs push token of the app's Live Activity for the machine the authenticated user is running, so the server can end it when the session finishes. Idempotent per token; send the new token whenever it rotates. If the session already ended, the Live Activity is ended immediately and nothing is stored.",
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiBody({ type: RegisterLiveActivityReqDto })
+  @ApiOkResponse({
+    type: SuccessResDto,
+    description: 'Successfully registered the Live Activity token.',
+  })
+  @ApiBadRequestResponse({ description: 'Invalid push token or environment.' })
+  @ApiForbiddenResponse({
+    description: 'The machine is being used by someone else.',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'The user has no running (or recently ended) session on the machine.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async registerLiveActivity(
+    @Param('uuid', ParseUUIDPipe) machineUuid: string,
+    @GetUser() user: User,
+    @Body() body: RegisterLiveActivityReqDto,
+  ) {
+    await this.machineService.registerLiveActivity(
+      user.uuid,
+      machineUuid,
+      body,
+    );
+    return { success: true };
+  }
+
+  @Delete('/:uuid/live-activity')
+  @ApiOperation({
+    summary: 'Unregister iOS Live Activity push token',
+    description:
+      'Stop updating a Live Activity (call when the user dismisses it in the app). Succeeds even if the token is unknown or belongs to another account.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiBody({ type: UnregisterLiveActivityReqDto })
+  @ApiOkResponse({
+    type: SuccessResDto,
+    description: 'Successfully unregistered the Live Activity token.',
+  })
+  @ApiBadRequestResponse({ description: 'Invalid push token.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async unregisterLiveActivity(
+    @Param('uuid', ParseUUIDPipe) _machineUuid: string,
+    @GetUser() user: User,
+    @Body() body: UnregisterLiveActivityReqDto,
+  ) {
+    await this.machineService.unregisterLiveActivity(user.uuid, body.pushToken);
     return { success: true };
   }
 

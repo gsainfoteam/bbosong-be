@@ -13,6 +13,8 @@ import {
   UsingMachineWithThinq,
 } from '@lib/database/types/machine.type';
 import { Loggable } from '@lib/logger';
+import { LiveActivityService } from '../notification/services/live-activity.service';
+import { RegisterLiveActivityReqDto } from './dto/req/register-live-activity-req.dto';
 import { MatterConnectionService } from '@lib/matter-client/matter-connection.service';
 import {
   BadRequestException,
@@ -48,6 +50,9 @@ const MACHINE_ON_POWER_THRESHOLD_WATTS = 4;
 const MACHINE_ON_DURATION_MS = 60_000;
 const MATTER_POWER_UNITS_PER_WATT = 1000;
 
+/** A Live Activity cannot outlive 8 hours, so older sessions are not worth ending. */
+const LIVE_ACTIVITY_MAX_AGE_MS = 8 * 60 * 60_000;
+
 @Loggable()
 @Injectable()
 @Trace()
@@ -74,6 +79,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     private readonly matterConnectionService: MatterConnectionService,
     private readonly shlinkService: ShlinkService,
     private readonly configService: ConfigService,
+    private readonly liveActivityService: LiveActivityService,
   ) {}
 
   async onModuleInit() {
@@ -674,6 +680,67 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     this.ensureMachineOperationAffected(count);
   }
 
+  /**
+   * Registers the push token of a Live Activity for the user's running
+   * session on the machine. If the session already ended (the app was
+   * suspended before the token arrived), the activity is ended right away.
+   */
+  async registerLiveActivity(
+    userUuid: string,
+    machineUuid: string,
+    dto: RegisterLiveActivityReqDto,
+  ): Promise<void> {
+    const running =
+      await this.usingMachineRepository.getUsingMachineByMachineUuid(
+        machineUuid,
+      );
+    if (running) {
+      if (running.userUuid !== userUuid) {
+        throw new ForbiddenException(
+          'The machine is not being used by the current user.',
+        );
+      }
+      await this.liveActivityService.registerToken({
+        userUuid,
+        usingMachineUuid: running.uuid,
+        pushToken: dto.pushToken,
+        environment: dto.environment,
+      });
+      // The session may have finished between the lookup and the insert; the
+      // finish hook would then have missed this token.
+      const current =
+        await this.usingMachineRepository.getUsingMachineByMachineUuid(
+          machineUuid,
+        );
+      if (current?.uuid !== running.uuid) {
+        await this.liveActivityService.endForUsingMachine(running.uuid);
+      }
+      return;
+    }
+
+    const ended =
+      await this.usingMachineRepository.getLatestEndedUsingMachineByUser(
+        userUuid,
+        machineUuid,
+      );
+    if (
+      !ended?.endedAt ||
+      Date.now() - ended.endedAt.getTime() > LIVE_ACTIVITY_MAX_AGE_MS
+    ) {
+      throw new NotFoundException(
+        'No running machine usage session for the current user.',
+      );
+    }
+    await this.liveActivityService.endUnregisteredToken(dto);
+  }
+
+  async unregisterLiveActivity(
+    userUuid: string,
+    pushToken: string,
+  ): Promise<void> {
+    await this.liveActivityService.unregisterToken(userUuid, pushToken);
+  }
+
   private ensureMachineOperationAffected(count: number): void {
     if (count === 0) {
       throw new NotFoundException(
@@ -705,16 +772,24 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     const notifyUserUuid = usingMachine?.notifyOnCompletion
       ? usingMachine.userUuid
       : null;
-    if (notifyUserUuid) {
-      await this.dispatchNotification(
-        () =>
-          this.notificationService.notifyMachineCompletion(
-            notifyUserUuid,
-            machine,
-          ),
-        `completion notification for machine ${machineUuid}`,
-      );
-    }
+    // The completion alert (FCM / Web Push) and the silent Live Activity end
+    // are independent; neither waits for or blocks the other.
+    await Promise.all([
+      notifyUserUuid
+        ? this.dispatchNotification(
+            () =>
+              this.notificationService.notifyMachineCompletion(
+                notifyUserUuid,
+                machine,
+              ),
+            `completion notification for machine ${machineUuid}`,
+          )
+        : undefined,
+      this.dispatchNotification(
+        () => this.liveActivityService.endForUsingMachine(usingMachine.uuid),
+        `Live Activity end for machine ${machineUuid}`,
+      ),
+    ]);
 
     await this.dispatchNotification(
       () =>

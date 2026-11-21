@@ -42,6 +42,13 @@ enum PushPlatform {
   @@map("push_platform")
 }
 
+enum LiveActivityEnvironment {
+  SANDBOX
+  PRODUCTION
+
+  @@map("live_activity_environment")
+}
+
 enum Location {
   A
   B
@@ -80,6 +87,7 @@ model User {
   userConsents                UserConsent[]
   auditLogs                   AuditLog[]
   pushSubscriptions           UserPushSubscription[]
+  liveActivityTokens          LiveActivityToken[]
   laundryRoomSubscriptions    LaundryRoomSubscription[]
   laundryRoomNotificationLogs LaundryRoomNotificationLog[]
   laundryRoomSubscriptionLogs LaundryRoomSubscriptionLog[]
@@ -175,6 +183,8 @@ model UsingMachine {
   user User? @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
 
   // The migration additionally enforces one open session per machine with a partial unique index.
+  liveActivityTokens LiveActivityToken[]
+
   @@index([machineUuid, startedAt])
   @@index([userUuid, endedAt, startedAt])
   @@map("using_machine")
@@ -210,6 +220,26 @@ model UserPushSubscription {
 
   @@index([userUuid])
   @@map("user_push_subscription")
+}
+
+// APNs push token of one Live Activity instance (one device, one session).
+// Tokens rotate and die with the activity, so rows are short-lived.
+model LiveActivityToken {
+  uuid             String                  @id @default(uuid()) @db.Uuid
+  userUuid         String                  @map("user_uuid") @db.Uuid
+  usingMachineUuid String                  @map("using_machine_uuid") @db.Uuid
+  pushToken        String                  @unique @map("push_token")
+  environment      LiveActivityEnvironment @map("environment")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @default(now()) @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userUuid], references: [uuid], onDelete: Cascade)
+  usingMachine UsingMachine @relation(fields: [usingMachineUuid], references: [uuid], onDelete: Cascade)
+
+  @@index([usingMachineUuid])
+  @@index([userUuid])
+  @@index([updatedAt])
+  @@map("live_activity_token")
 }
 
 model LaundryRoomSubscription {
