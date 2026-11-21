@@ -414,6 +414,7 @@ describe('MachineService access and registration', () => {
     await service.finishUsingMachine(machineUuid);
     expect(liveActivityService.completeForUsingMachine).toHaveBeenCalledWith(
       'usage-1',
+      userUuid,
     );
     expect(liveActivityService.endForUsingMachine).not.toHaveBeenCalled();
     expect(notificationService.notifyMachineCompletion).not.toHaveBeenCalled();
@@ -459,6 +460,7 @@ describe('MachineService access and registration', () => {
     );
     expect(liveActivityService.completeForUsingMachine).toHaveBeenCalledWith(
       'previous-usage',
+      null,
     );
     expect(liveActivityService.endForUsingMachine).not.toHaveBeenCalled();
   });
@@ -472,12 +474,15 @@ describe('MachineService access and registration', () => {
     );
   });
 
-  it('keeps Live Activities when nothing was unlinked', async () => {
+  it("still ends a finished session's Live Activity when unlinking finds no running session", async () => {
     usingMachineRepository.unlinkUserFromUsingMachine.mockResolvedValue(0);
     await expect(
       service.unlinkUserFromMachine(userUuid, machineUuid),
     ).rejects.toThrow(NotFoundException);
-    expect(liveActivityService.endForUserOnMachine).not.toHaveBeenCalled();
+    expect(liveActivityService.endForUserOnMachine).toHaveBeenCalledWith(
+      userUuid,
+      machineUuid,
+    );
   });
 
   describe('Live Activity registration', () => {
@@ -516,7 +521,22 @@ describe('MachineService access and registration', () => {
       await service.registerLiveActivity(userUuid, machineUuid, dto);
       expect(liveActivityService.completeForUsingMachine).toHaveBeenCalledWith(
         'usage-1',
+        userUuid,
       );
+    });
+
+    it('ends the activity when the user unlinked while registering', async () => {
+      usingMachineRepository.getUsingMachineByMachineUuid
+        .mockResolvedValueOnce(running)
+        .mockResolvedValueOnce({ ...running, userUuid: null });
+      await service.registerLiveActivity(userUuid, machineUuid, dto);
+      expect(liveActivityService.endForUserOnMachine).toHaveBeenCalledWith(
+        userUuid,
+        machineUuid,
+      );
+      expect(
+        liveActivityService.completeForUsingMachine,
+      ).not.toHaveBeenCalled();
     });
 
     it('stores the token and shows done when the session just ended', async () => {
@@ -733,15 +753,17 @@ describe('MachineService access and registration', () => {
     it('syncs the running Live Activity with the ThinQ state and remaining time', async () => {
       usingMachineRepository.createUsingMachine.mockResolvedValue({
         uuid: 'usage-9',
+        userUuid,
       });
       await service.updateThinqDryerState(machineUuid, 'device', {
         runState: { currentState: 'COOLING' },
         timer: { remainHour: 0, remainMinute: 15 },
       });
-      expect(liveActivityService.syncRunning).toHaveBeenCalledWith('usage-9', {
-        state: 'COOLING',
-        remainingMinutes: 15,
-      });
+      expect(liveActivityService.syncRunning).toHaveBeenCalledWith(
+        'usage-9',
+        userUuid,
+        { state: 'COOLING', remainingMinutes: 15 },
+      );
     });
 
     it('treats DETECTING as occupied without remaining time', async () => {

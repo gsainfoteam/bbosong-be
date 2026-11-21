@@ -75,6 +75,10 @@ export class ApnsHttpClient implements OnModuleDestroy {
         ),
       );
       request.on('error', (error: Error) => done(() => reject(error)));
+      // A remote RST_STREAM can close the stream without 'end' or 'error'.
+      request.on('close', () =>
+        done(() => reject(new Error('APNs stream closed without a response'))),
+      );
       request.end(body);
     });
   }

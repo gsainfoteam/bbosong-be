@@ -17,8 +17,16 @@ describe('LiveActivityService', () => {
   const now = new Date('2026-11-21T03:00:00Z');
   const seconds = Math.floor(now.getTime() / 1000);
   const tokens = [
-    { pushToken: 'aa', environment: LiveActivityEnvironment.PRODUCTION },
-    { pushToken: 'bb', environment: LiveActivityEnvironment.SANDBOX },
+    {
+      userUuid: 'user-1',
+      pushToken: 'aa',
+      environment: LiveActivityEnvironment.PRODUCTION,
+    },
+    {
+      userUuid: 'user-1',
+      pushToken: 'bb',
+      environment: LiveActivityEnvironment.SANDBOX,
+    },
   ];
   const repository = {
     upsertToken: jest.fn(),
@@ -89,7 +97,7 @@ describe('LiveActivityService', () => {
 
   describe('completeForUsingMachine', () => {
     it('shows done on every device but keeps the tokens', async () => {
-      await service.completeForUsingMachine('usage-1', now);
+      await service.completeForUsingMachine('usage-1', 'user-1', now);
       expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
       expect(apns.sendLiveActivityUpdate).toHaveBeenCalledWith(
         tokens[0],
@@ -105,8 +113,65 @@ describe('LiveActivityService', () => {
       apns.sendLiveActivityUpdate
         .mockResolvedValueOnce('sent')
         .mockResolvedValueOnce('dead-token');
-      await service.completeForUsingMachine('usage-1', now);
+      await service.completeForUsingMachine('usage-1', 'user-1', now);
       expect(repository.deleteTokens).toHaveBeenCalledWith(['bb']);
+    });
+  });
+
+  describe('users who stopped tracking the session', () => {
+    const orphan = {
+      userUuid: 'user-2',
+      pushToken: 'cc',
+      environment: LiveActivityEnvironment.PRODUCTION,
+    };
+
+    beforeEach(() => {
+      repository.getTokensByUsingMachine.mockResolvedValue([tokens[0], orphan]);
+    });
+
+    it('only ends their activity when the session completes', async () => {
+      await service.completeForUsingMachine('usage-1', 'user-1', now);
+      expect(apns.sendLiveActivityEnd).toHaveBeenCalledTimes(1);
+      expect(apns.sendLiveActivityEnd).toHaveBeenCalledWith(
+        orphan,
+        expect.anything(),
+        now,
+      );
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(1);
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledWith(
+        tokens[0],
+        expect.anything(),
+        { highPriority: true },
+        now,
+      );
+    });
+
+    it('retries ending them instead of updating them while running', async () => {
+      await service.syncRunning(
+        'usage-1',
+        'user-1',
+        { state: 'RUNNING', remainingMinutes: 30 },
+        now,
+      );
+      expect(apns.sendLiveActivityEnd).toHaveBeenCalledWith(
+        orphan,
+        expect.anything(),
+        now,
+      );
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(1);
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalledWith(
+        orphan,
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+      );
+      expect(repository.deleteTokens).toHaveBeenCalledWith(['cc']);
+    });
+
+    it('treats every token as orphaned once the session has no user', async () => {
+      await service.completeForUsingMachine('usage-1', null, now);
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+      expect(apns.sendLiveActivityEnd).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -120,6 +185,14 @@ describe('LiveActivityService', () => {
         now,
       );
       expect(repository.deleteTokens).toHaveBeenCalledWith(['aa', 'bb']);
+    });
+
+    it('keeps tokens whose end could not be delivered', async () => {
+      apns.sendLiveActivityEnd
+        .mockResolvedValueOnce('failed')
+        .mockResolvedValueOnce('dead-token');
+      await service.endForUsingMachine('usage-1', now);
+      expect(repository.deleteTokens).toHaveBeenCalledWith(['bb']);
     });
 
     it('does nothing for a session without Live Activities', async () => {
@@ -158,12 +231,12 @@ describe('LiveActivityService', () => {
 
     it('does nothing when APNs is disabled', async () => {
       apns.isEnabled.mockReturnValue(false);
-      await service.syncRunning('usage-1', running(30), now);
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
       expect(repository.getTokensByUsingMachine).not.toHaveBeenCalled();
     });
 
     it('sends the first update with the projected finish time', async () => {
-      await service.syncRunning('usage-1', running(30), now);
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
       expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
       expect(apns.sendLiveActivityUpdate).toHaveBeenCalledWith(
         tokens[0],
@@ -180,22 +253,32 @@ describe('LiveActivityService', () => {
 
     it('does not send without registered devices', async () => {
       repository.getTokensByUsingMachine.mockResolvedValue([]);
-      await service.syncRunning('usage-1', running(30), now);
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
       expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
     });
 
     it('ignores an unchanged countdown', async () => {
-      await service.syncRunning('usage-1', running(30), now);
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
       apns.sendLiveActivityUpdate.mockClear();
       // 10 minutes later the timer reads 20: same finish time.
-      await service.syncRunning('usage-1', running(20), at(10 * 60_000));
+      await service.syncRunning(
+        'usage-1',
+        'user-1',
+        running(20),
+        at(10 * 60_000),
+      );
       expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
     });
 
     it('sends when the finish time drifts, at normal priority', async () => {
-      await service.syncRunning('usage-1', running(30), now);
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
       apns.sendLiveActivityUpdate.mockClear();
-      await service.syncRunning('usage-1', running(25), at(2 * 60_000));
+      await service.syncRunning(
+        'usage-1',
+        'user-1',
+        running(25),
+        at(2 * 60_000),
+      );
       expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
       expect(apns.sendLiveActivityUpdate).toHaveBeenCalledWith(
         tokens[0],
@@ -206,17 +289,22 @@ describe('LiveActivityService', () => {
     });
 
     it('throttles finish-time drift updates', async () => {
-      await service.syncRunning('usage-1', running(30), now);
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
       apns.sendLiveActivityUpdate.mockClear();
       // Drift of 5 minutes but only 30 seconds after the previous push.
-      await service.syncRunning('usage-1', running(25), at(30_000));
+      await service.syncRunning('usage-1', 'user-1', running(25), at(30_000));
       expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
     });
 
     it('sends state changes right away at high priority', async () => {
-      await service.syncRunning('usage-1', running(30), now);
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
       apns.sendLiveActivityUpdate.mockClear();
-      await service.syncRunning('usage-1', running(30, 'PAUSE'), at(1_000));
+      await service.syncRunning(
+        'usage-1',
+        'user-1',
+        running(30, 'PAUSE'),
+        at(1_000),
+      );
       expect(apns.sendLiveActivityUpdate).toHaveBeenCalledWith(
         tokens[0],
         expect.objectContaining({ state: 'PAUSE' }),
@@ -226,9 +314,14 @@ describe('LiveActivityService', () => {
     });
 
     it('sends when the remaining time becomes unknown', async () => {
-      await service.syncRunning('usage-1', running(30), now);
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
       apns.sendLiveActivityUpdate.mockClear();
-      await service.syncRunning('usage-1', running(null), at(2 * 60_000));
+      await service.syncRunning(
+        'usage-1',
+        'user-1',
+        running(null),
+        at(2 * 60_000),
+      );
       expect(apns.sendLiveActivityUpdate).toHaveBeenCalledWith(
         tokens[0],
         expect.objectContaining({ endsAt: null, remainingMinutes: null }),
@@ -237,11 +330,46 @@ describe('LiveActivityService', () => {
       );
     });
 
+    it('retries the same update on the next sync after a failed push', async () => {
+      apns.sendLiveActivityUpdate.mockResolvedValue('failed');
+      await service.syncRunning('usage-1', 'user-1', running(30, 'PAUSE'), now);
+      apns.sendLiveActivityUpdate.mockClear();
+      apns.sendLiveActivityUpdate.mockResolvedValue('sent');
+      await service.syncRunning(
+        'usage-1',
+        'user-1',
+        running(30, 'PAUSE'),
+        at(1_000),
+      );
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the throttle of the last successful push after a failure', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
+      apns.sendLiveActivityUpdate.mockResolvedValue('failed');
+      await service.syncRunning(
+        'usage-1',
+        'user-1',
+        running(20, 'PAUSE'),
+        at(5_000),
+      );
+      apns.sendLiveActivityUpdate.mockClear();
+      apns.sendLiveActivityUpdate.mockResolvedValue('sent');
+      // State is still PAUSE vs. the last successful RUNNING: sent again.
+      await service.syncRunning(
+        'usage-1',
+        'user-1',
+        running(20, 'PAUSE'),
+        at(6_000),
+      );
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+    });
+
     it('prunes tokens APNs reports as dead', async () => {
       apns.sendLiveActivityUpdate
         .mockResolvedValueOnce('dead-token')
         .mockResolvedValueOnce('sent');
-      await service.syncRunning('usage-1', running(30), now);
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
       expect(repository.deleteTokens).toHaveBeenCalledWith(['aa']);
     });
   });

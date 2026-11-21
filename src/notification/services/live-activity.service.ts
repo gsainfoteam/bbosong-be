@@ -24,6 +24,7 @@ interface LastSent {
 }
 
 interface ActivityToken {
+  userUuid: string;
   pushToken: string;
   environment: LiveActivityEnvironment;
 }
@@ -67,6 +68,7 @@ export class LiveActivityService {
    */
   async syncRunning(
     usingMachineUuid: string,
+    ownerUuid: string | null,
     thinq: { state: string | null; remainingMinutes: number | null },
     now: Date = new Date(),
   ): Promise<void> {
@@ -93,19 +95,24 @@ export class LiveActivityService {
       return;
     }
 
-    const tokens =
+    const { owned, orphaned } = this.splitByOwner(
       await this.liveActivityRepository.getTokensByUsingMachine(
         usingMachineUuid,
-      );
-    if (tokens.length === 0) return;
+      ),
+      ownerUuid,
+    );
+    // Tokens of users no longer tracking the session only get the end again.
+    await this.endAndForget(orphaned, now);
+    if (owned.length === 0) return;
 
     // Record before sending so concurrent events do not double-send.
-    this.lastSent.set(usingMachineUuid, {
+    const entry: LastSent = {
       state: contentState.state,
       endsAt: contentState.endsAt,
       sentAt: now.getTime(),
-    });
-    await this.pushAndPrune(tokens, (token) =>
+    };
+    this.lastSent.set(usingMachineUuid, entry);
+    const results = await this.pushAndPrune(owned, (token) =>
       this.apnsService.sendLiveActivityUpdate(
         token,
         contentState,
@@ -113,6 +120,14 @@ export class LiveActivityService {
         now,
       ),
     );
+    // A device that did not get the update must be retried by the next sync.
+    if (
+      results.includes('failed') &&
+      this.lastSent.get(usingMachineUuid) === entry
+    ) {
+      if (previous) this.lastSent.set(usingMachineUuid, previous);
+      else this.lastSent.delete(usingMachineUuid);
+    }
   }
 
   /**
@@ -121,15 +136,19 @@ export class LiveActivityService {
    */
   async completeForUsingMachine(
     usingMachineUuid: string,
+    ownerUuid: string | null,
     now: Date = new Date(),
   ): Promise<void> {
     this.lastSent.delete(usingMachineUuid);
-    const tokens =
+    const { owned, orphaned } = this.splitByOwner(
       await this.liveActivityRepository.getTokensByUsingMachine(
         usingMachineUuid,
-      );
+      ),
+      ownerUuid,
+    );
+    await this.endAndForget(orphaned, now);
     const contentState = buildEndContentState(now);
-    await this.pushAndPrune(tokens, (token) =>
+    await this.pushAndPrune(owned, (token) =>
       this.apnsService.sendLiveActivityUpdate(
         token,
         contentState,
@@ -186,36 +205,50 @@ export class LiveActivityService {
     await this.endAndForget(tokens, now);
   }
 
+  /** Tokens of the session's current user vs. users who stopped tracking it. */
+  private splitByOwner<T extends ActivityToken>(
+    tokens: T[],
+    ownerUuid: string | null,
+  ): { owned: T[]; orphaned: T[] } {
+    return {
+      owned: tokens.filter((token) => token.userUuid === ownerUuid),
+      orphaned: tokens.filter((token) => token.userUuid !== ownerUuid),
+    };
+  }
+
+  /**
+   * Ends the activities. Tokens APNs accepted or rejected as dead are
+   * forgotten; those that could not be reached are kept so a later sync
+   * retries the end.
+   */
   private async endAndForget(
-    tokens: Array<ActivityToken>,
+    tokens: ActivityToken[],
     now: Date,
   ): Promise<void> {
     if (tokens.length === 0) return;
     const contentState = buildEndContentState(now);
-    await Promise.all(
+    const results = await Promise.all(
       tokens.map((token) =>
         this.apnsService.sendLiveActivityEnd(token, contentState, now),
       ),
     );
-    // The activity is over whether or not APNs accepted the end.
     await this.liveActivityRepository.deleteTokens(
-      tokens.map((token) => token.pushToken),
+      tokens
+        .filter((_, index) => results[index] !== 'failed')
+        .map((token) => token.pushToken),
     );
   }
 
   private async pushAndPrune(
     tokens: ActivityToken[],
     send: (token: ActivityToken) => Promise<ApnsSendResult>,
-  ): Promise<void> {
-    const results = await Promise.all(
-      tokens.map(async (token) => ({
-        pushToken: token.pushToken,
-        result: await send(token),
-      })),
+  ): Promise<ApnsSendResult[]> {
+    const results = await Promise.all(tokens.map((token) => send(token)));
+    await this.liveActivityRepository.deleteTokens(
+      tokens
+        .filter((_, index) => results[index] === 'dead-token')
+        .map((token) => token.pushToken),
     );
-    const dead = results
-      .filter(({ result }) => result === 'dead-token')
-      .map(({ pushToken }) => pushToken);
-    await this.liveActivityRepository.deleteTokens(dead);
+    return results;
   }
 }

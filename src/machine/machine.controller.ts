@@ -530,7 +530,7 @@ export class MachineController {
   @ApiOperation({
     summary: 'Register iOS Live Activity push token',
     description:
-      "Register the APNs push token of the app's Live Activity for the machine the authenticated user is running, so the server can keep it up to date (state and finish time) and show a done state when the session finishes. The Live Activity stays on screen after completion until the app ends it; the server ends it when another user registers the machine. Idempotent per token; send the new token whenever it rotates. If the session already ended, the done state is pushed immediately.",
+      "Register the APNs push token of the app's Live Activity for the machine the authenticated user is running, so the server can keep it up to date (state and finish time) and show a done state when the session finishes. The Live Activity stays on screen after completion until the app ends it or the user unlinks from the machine (which makes the server end it); a new session or another user registering the machine does not end it. Idempotent per token; send the new token whenever it rotates. If the session already ended, the done state is pushed immediately.",
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)

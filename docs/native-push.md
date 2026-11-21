@@ -106,10 +106,10 @@ FCM에서는 `notification`(title/body) + data map으로 전달하며 data 값�
 
 | 시점 | 이벤트 | 비고 |
 | --- | --- | --- |
-| ThinQ 건조기 진행 중 상태/남은 시간 변경 | `update` | 상태가 바뀌면 즉시(priority 10), 종료 예상 시각이 2분 이상 어긋났을 때만(priority 5, 세션당 60초 간격 제한). 카운트다운 자체는 앱이 `Text(timerInterval:)`로 그린다 |
+| ThinQ 건조기 진행 중 상태/남은 시간 변경 | `update` | 상태가 바뀌면 즉시(priority 10), 종료 예상 시각이 2분 이상 어긋났을 때만(priority 5, 세션당 60초 간격 제한). 전송이 실패하면 다음 동기화에서 같은 내용을 다시 보낸다. 카운트다운 자체는 앱이 `Text(timerInterval:)`로 그린다 |
 | 세션 종료(`finishUsingMachine`) | `update` (`state: END`) | **`end`를 보내지 않는다.** 완료 후에도 Dynamic Island/잠금화면에 남는다. 토큰도 유지. `notifyOnCompletion`과 무관 |
 | 다른 사용자가 완료 확인 후 같은 기계를 재등록 | `update` (`state: END`) | 이전 사용자는 여전히 수거해야 하므로 `end`를 보내지 않고 "완료"로 남긴다. 같은 기계에 새 세션이 시작돼도 이전 사용자의 activity에는 아무것도 보내지 않는다 |
-| 사용자가 `DELETE /machine/:uuid/register`로 기계 추적을 해제 | `end` | 그 사용자의 해당 기계 activity(진행 중·완료 상태 모두)를 즉시 제거하고 토큰 삭제 |
+| 사용자가 `DELETE /machine/:uuid/register`로 기계 추적을 해제 | `end` | 그 사용자의 해당 기계 activity(진행 중·완료 상태 모두)를 즉시 제거하고 토큰 삭제. 진행 중 세션이 없어 404를 반환하는 경우에도 정리한다. APNs 전송이 실패한 토큰은 남겨 두었다가, 이후 세션의 update/완료 시점에 `end`만 다시 시도한다(일반 update는 보내지 않는다) |
 | 앱이 로컬에서 `activity.end` (수거 확인 등) | - | 앱이 `DELETE /machine/:uuid/live-activity`로 토큰을 정리 |
 
 - 완료 후 activity는 앱이 끝내거나(수거 확인 등), 사용자가 추적을 해제하거나(위 표), 시스템이 종료할 때까지 남는다. iOS는 시작 후 최대 8시간이면 시스템이 종료한다. 9시간 이상 지난 토큰은 등록 시 정리한다.

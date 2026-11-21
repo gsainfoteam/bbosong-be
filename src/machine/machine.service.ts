@@ -507,10 +507,14 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       const usingMachine = await this.startUsingMachine(uuid);
       await this.dispatchNotification(
         () =>
-          this.liveActivityService.syncRunning(usingMachine.uuid, {
-            state: currentState ?? null,
-            remainingMinutes,
-          }),
+          this.liveActivityService.syncRunning(
+            usingMachine.uuid,
+            usingMachine.userUuid,
+            {
+              state: currentState ?? null,
+              remainingMinutes,
+            },
+          ),
         `Live Activity update for machine ${uuid}`,
       );
     } else {
@@ -606,7 +610,11 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     // The previous user still has to pick up their laundry: show it as done
     // and leave the activity for them to dismiss.
     await this.dispatchNotification(
-      () => this.liveActivityService.completeForUsingMachine(previous.uuid),
+      () =>
+        this.liveActivityService.completeForUsingMachine(
+          previous.uuid,
+          previous.userUuid,
+        ),
       `Live Activity completion for machine ${machineUuid}`,
     );
     if (previous.userUuid) {
@@ -691,11 +699,13 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       userUuid,
       machineUuid,
     );
-    this.ensureMachineOperationAffected(count);
+    // Also when the session already finished (count 0): the activity may
+    // still show "done" and the user is asking to stop tracking the machine.
     await this.dispatchNotification(
       () => this.liveActivityService.endForUserOnMachine(userUuid, machineUuid),
       `Live Activity end for user unlinking machine ${machineUuid}`,
     );
+    this.ensureMachineOperationAffected(count);
   }
 
   /**
@@ -725,14 +735,23 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         pushToken: dto.pushToken,
         environment: dto.environment,
       });
-      // The session may have finished between the lookup and the insert; the
-      // finish hook would then have missed this token.
+      // The session may have finished, or the user may have unlinked, between
+      // the lookup and the insert; those hooks would then have missed this token.
       const current =
         await this.usingMachineRepository.getUsingMachineByMachineUuid(
           machineUuid,
         );
       if (current?.uuid !== running.uuid) {
-        await this.liveActivityService.completeForUsingMachine(running.uuid);
+        await this.liveActivityService.completeForUsingMachine(
+          running.uuid,
+          userUuid,
+        );
+      } else if (current.userUuid !== userUuid) {
+        // Unlinked meanwhile: the unlink cleanup may have missed this token.
+        await this.liveActivityService.endForUserOnMachine(
+          userUuid,
+          machineUuid,
+        );
       }
       return;
     }
@@ -811,7 +830,10 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         : undefined,
       this.dispatchNotification(
         () =>
-          this.liveActivityService.completeForUsingMachine(usingMachine.uuid),
+          this.liveActivityService.completeForUsingMachine(
+            usingMachine.uuid,
+            usingMachine.userUuid,
+          ),
         `Live Activity completion for machine ${machineUuid}`,
       ),
     ]);
