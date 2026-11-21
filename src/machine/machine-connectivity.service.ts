@@ -10,8 +10,7 @@ import { Machine, MachineType } from 'generated/prisma/client';
 import { formatError } from '../common/utils/format-error.util';
 import { NotificationService } from '../notification/notification.service';
 
-const CHECK_INTERVAL_MS = 30_000;
-const OFFLINE_GRACE_MS = 60_000;
+const CHECK_INTERVAL_MS = 10_000;
 
 export type MachineConnectivity = {
   isOnline: boolean | null;
@@ -107,6 +106,7 @@ export class MachineConnectivityService
       };
       const previous = state.isOnline;
       const now = Date.now();
+      const downSince = state.unavailableSince;
       const available =
         machine.macAddress &&
         availableBySite.get(machine.location)?.has(machine.macAddress);
@@ -116,8 +116,7 @@ export class MachineConnectivityService
         state.unavailableSince = null;
       } else {
         state.unavailableSince ??= now;
-        if (now - state.unavailableSince >= OFFLINE_GRACE_MS)
-          state.isOnline = false;
+        state.isOnline = false;
       }
       if (state.isOnline === previous) {
         this.states.set(machine.uuid, state);
@@ -134,6 +133,19 @@ export class MachineConnectivityService
       const message = `Machine ${machine.uuid} (${machine.location}/${machine.gender}/${machine.type}/${machine.index}) ${state.isOnline ? 'online' : 'offline'}; lastSeenAt=${state.lastSeenAt?.toISOString() ?? 'never'}`;
       if (state.isOnline) {
         this.logger.log(message);
+        // Only a confirmed offline -> online transition has a meaningful downtime.
+        if (previous === false && downSince !== null) {
+          try {
+            await this.notificationService.notifyMachineOnline(
+              machine,
+              now - downSince,
+            );
+          } catch (error: unknown) {
+            this.logger.error(
+              `Failed to notify machine ${machine.uuid} online: ${formatError(error)}`,
+            );
+          }
+        }
       } else {
         this.logger.warn(message);
         try {

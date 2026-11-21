@@ -12,7 +12,6 @@ import {
   MachineType,
   Prisma,
   PushPlatform,
-  Role,
 } from 'generated/prisma/client';
 import { PrismaTransaction } from '@lib/database/types';
 import { Trace } from '@gsainfoteam/nest-observability';
@@ -137,20 +136,6 @@ export class NotificationRepository {
           ],
         },
         data: { lastActivatedAt: activatedAt },
-      }),
-    );
-  }
-
-  async getAdminPushRecipients() {
-    return this.run(
-      'getAdminPushRecipients',
-      this.databaseService.user.findMany({
-        where: {
-          deletedAt: null,
-          role: Role.ADMIN,
-          pushSubscriptions: { some: {} },
-        },
-        select: { uuid: true },
       }),
     );
   }
