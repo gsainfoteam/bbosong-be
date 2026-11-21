@@ -10,9 +10,16 @@ import {
 } from '../types/live-update.type';
 import { FcmService } from './fcm.service';
 
+/** Ignore finish-time drift below this; the app's own countdown covers it. */
+const MIN_ENDS_AT_DRIFT_SECONDS = 120;
+/** Minimum spacing of messages when only the finish time moved. */
+const MIN_UPDATE_INTERVAL_MS = 60_000;
+
 interface LastSent {
   state: string;
   ownerUuid: string;
+  endsAt: number | null;
+  sentAt: number;
 }
 
 /**
@@ -30,7 +37,8 @@ export class LiveUpdateService {
 
   /**
    * Pushes the running state of a session when its state (or its owner)
-   * changed since the last message.
+   * changed, or when the finish time moved meaningfully (same rules as the
+   * iOS Live Activity).
    */
   async syncRunning(
     usingMachineUuid: string,
@@ -46,15 +54,31 @@ export class LiveUpdateService {
       now,
     );
     const previous = this.lastSent.get(usingMachineUuid);
-    if (
-      previous?.state === contentState.state &&
-      previous.ownerUuid === ownerUuid
-    ) {
-      return;
+    const transitioned =
+      !previous ||
+      previous.state !== contentState.state ||
+      previous.ownerUuid !== ownerUuid;
+    if (!transitioned) {
+      const endsAtMoved =
+        previous.endsAt === null || contentState.endsAt === null
+          ? previous.endsAt !== contentState.endsAt
+          : Math.abs(contentState.endsAt - previous.endsAt) >=
+            MIN_ENDS_AT_DRIFT_SECONDS;
+      if (
+        !endsAtMoved ||
+        now.getTime() - previous.sentAt < MIN_UPDATE_INTERVAL_MS
+      ) {
+        return;
+      }
     }
 
     // Record before sending so concurrent events do not double-send.
-    const entry: LastSent = { state: contentState.state, ownerUuid };
+    const entry: LastSent = {
+      state: contentState.state,
+      ownerUuid,
+      endsAt: contentState.endsAt,
+      sentAt: now.getTime(),
+    };
     this.lastSent.set(usingMachineUuid, entry);
     const { failed } = await this.fcmService.sendLiveUpdateToUser(
       ownerUuid,

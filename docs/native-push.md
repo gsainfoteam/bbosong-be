@@ -161,7 +161,7 @@ Android 16 Live Update(`Notification.ProgressStyle`)는 서버 `notification` �
 | `endsAt` | 알 때만 | 예상 종료 시각. 남은 시간을 모르면(`DETECTING` 등) 생략 |
 | `remainingMinutes` | 알 때만 | 남은 분. 모르면 생략 |
 
-`END`(`endsAt`=현재, `remainingMinutes`=`0`)와 `ERROR`가 종료 신호다. 카운트다운은 앱이 `endsAt`으로 로컬 처리하며 주기 푸시는 없다.
+`END`(`endsAt`=현재, `remainingMinutes`=`0`)와 `ERROR`가 종료 신호다. 카운트다운은 앱이 `endsAt`으로 로컬 처리하며 주기 푸시는 없다. 같은 `state`로 다시 오는 메시지는 `endsAt` 보정이므로 앱은 알림을 새 값으로 갱신하면 된다.
 
 ### 발송 시점
 
@@ -169,7 +169,8 @@ Android 16 Live Update(`Notification.ProgressStyle`)는 서버 `notification` �
 
 | 시점 | 메시지 |
 | --- | --- |
-| ThinQ 건조기 진행 중 **상태가 바뀔 때**(또는 세션 owner가 바뀌었을 때) | 해당 `state`. 같은 상태가 반복되면 보내지 않는다. 기기에 닿지 못하면 다음 동기화에서 재시도 |
+| ThinQ 건조기 진행 중 **상태가 바뀔 때**(또는 세션 owner가 바뀌었을 때) | 해당 `state`. 기기에 닿지 못하면 다음 동기화에서 재시도 |
+| 같은 상태에서 **종료 예상 시각이 2분 이상 어긋났을 때**(또는 남은 시간이 알려지거나 사라졌을 때) | 갱신된 `endsAt`/`remainingMinutes`. 세션당 60초 간격 제한. iOS Live Activity와 같은 규칙 |
 | 세션 종료(`finishUsingMachine`) | `END` (`notifyOnCompletion`과 무관) |
 | 다른 사용자가 완료 확인 후 기계를 재등록 | 이전 사용자에게 `END` |
 | 사용자가 `DELETE /machine/:uuid/register`로 추적 해제 | 그 사용자에게 `END` |

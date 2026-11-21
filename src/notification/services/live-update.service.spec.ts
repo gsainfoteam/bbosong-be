@@ -19,14 +19,20 @@ describe('LiveUpdateService', () => {
     service = new LiveUpdateService(fcmService as never);
   });
 
-  const sync = (state: string, owner: string | null = 'user-1') =>
+  const sync = (
+    state: string,
+    owner: string | null = 'user-1',
+    remainingMinutes: number | null = 20,
+    at: Date = now,
+  ) =>
     service.syncRunning(
       'session-1',
       owner,
       session,
-      { state, remainingMinutes: 20 },
-      now,
+      { state, remainingMinutes },
+      at,
     );
+  const later = (seconds: number) => new Date(now.getTime() + seconds * 1000);
 
   it('sends only on state transitions', async () => {
     await sync('RUNNING');
@@ -37,6 +43,32 @@ describe('LiveUpdateService', () => {
       expect.objectContaining({ type: 'LIVE_UPDATE', state: 'RUNNING' }),
     );
     await sync('COOLING');
+    expect(fcmService.sendLiveUpdateToUser).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends a correction when the finish time drifts by 2 minutes or more, not for the elapsed time', async () => {
+    await sync('RUNNING', 'user-1', 20);
+    await sync('RUNNING', 'user-1', 19, later(60)); // same finish time
+    expect(fcmService.sendLiveUpdateToUser).toHaveBeenCalledTimes(1);
+    await sync('RUNNING', 'user-1', 35, later(120));
+    expect(fcmService.sendLiveUpdateToUser).toHaveBeenCalledTimes(2);
+    expect(fcmService.sendLiveUpdateToUser).toHaveBeenLastCalledWith(
+      'user-1',
+      expect.objectContaining({ remainingMinutes: '35' }),
+    );
+  });
+
+  it('throttles corrections to one per minute', async () => {
+    await sync('RUNNING', 'user-1', 20);
+    await sync('RUNNING', 'user-1', 40, later(30));
+    expect(fcmService.sendLiveUpdateToUser).toHaveBeenCalledTimes(1);
+    await sync('RUNNING', 'user-1', 40, later(60));
+    expect(fcmService.sendLiveUpdateToUser).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends when the finish time becomes known or unknown', async () => {
+    await sync('RUNNING', 'user-1', null);
+    await sync('RUNNING', 'user-1', 20, later(60));
     expect(fcmService.sendLiveUpdateToUser).toHaveBeenCalledTimes(2);
   });
 
