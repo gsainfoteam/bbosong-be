@@ -32,3 +32,43 @@ export function buildEndContentState(now: Date): LiveActivityContentState {
     updatedAt: seconds,
   };
 }
+
+/**
+ * Maps a ThinQ dryer `runState.currentState` to the Live Activity state.
+ * Only used while a session is open, so post-dry states mean the cycle is over
+ * and anything unknown is treated as still running.
+ */
+export function mapThinqStateToLiveActivityState(
+  thinqState: string | null | undefined,
+): LiveActivityState {
+  switch (thinqState) {
+    case 'COOLING':
+    case 'PAUSE':
+    case 'DETECTING':
+    case 'ERROR':
+      return thinqState;
+    case 'END':
+    case 'POWER_OFF':
+    case 'SLEEP':
+    case 'INITIAL':
+    case 'WRINKLE_CARE':
+      return 'END';
+    default:
+      return 'RUNNING';
+  }
+}
+
+/** Content state for a running dryer, with the finish time projected from `now`. */
+export function buildRunningContentState(
+  thinqState: string | null | undefined,
+  remainingMinutes: number | null,
+  now: Date,
+): LiveActivityContentState {
+  const seconds = Math.floor(now.getTime() / 1000);
+  return {
+    state: mapThinqStateToLiveActivityState(thinqState),
+    endsAt: remainingMinutes === null ? null : seconds + remainingMinutes * 60,
+    remainingMinutes,
+    updatedAt: seconds,
+  };
+}

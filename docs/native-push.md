@@ -88,7 +88,7 @@ FCM에서는 `notification`(title/body) + data map으로 전달하며 data 값�
 
 ## iOS Live Activity (APNs 직접 발송)
 
-건조기 남은 시간을 잠금화면/Dynamic Island에 보여주는 Live Activity는 FCM으로 갱신할 수 없어, 서버가 APNs(`apns-push-type: liveactivity`)로 직접 보낸다. 기존 FCM 완료 알림(alert)과는 별개이며, Live Activity 종료(end)는 alert 없이 무음으로 보낸다.
+건조기 남은 시간을 잠금화면/Dynamic Island에 보여주는 Live Activity는 FCM으로 갱신할 수 없어, 서버가 APNs(`apns-push-type: liveactivity`)로 직접 보낸다. 기존 FCM 완료 알림(alert)과는 별개이며, Live Activity 푸시는 모두 alert 없이 무음이다.
 
 ### API
 
@@ -99,20 +99,27 @@ FCM에서는 `notification`(title/body) + data map으로 전달하며 data 값�
 
 - `pushToken`: ActivityKit `pushTokenUpdates`의 hex 문자열. **activity마다, 기기마다 다르고 도중에 바뀔 수 있으므로** 바뀔 때마다 다시 등록한다(upsert).
 - `environment`: `SANDBOX`(Debug 빌드) / `PRODUCTION`(TestFlight·App Store). 서버가 APNs 호스트(`api.sandbox.push.apple.com` / `api.push.apple.com`)를 고르는 데만 쓴다.
-- 요청한 사용자의 진행 중 세션이 있어야 한다(없으면 404, 남의 세션이면 403). 세션이 방금 끝났다면(8시간 이내) 토큰을 저장하지 않고 즉시 end를 보낸다.
+- 요청한 사용자의 진행 중 세션이 있어야 한다(없으면 404, 남의 세션이면 403). 세션이 방금 끝났다면(8시간 이내) 토큰을 저장하고 즉시 "완료" 상태를 보낸다.
 - 한 세션에 여러 기기의 토큰이 등록될 수 있고, 서버는 모두에게 보낸다. 기기 간 자동 전파는 없다(각 기기 앱이 자기 activity를 시작하고 토큰을 등록해야 한다).
 
-### 발송
+### 발송 시점
 
-- 세션 종료(`MachineService.finishUsingMachine`) 시 해당 세션의 모든 토큰에 `event: end`를 보내고 토큰을 삭제한다. `notifyOnCompletion`과 무관하다.
-- 410 또는 400 `BadDeviceToken`/`DeviceTokenNotForTopic`은 무효 토큰으로 본다. 429/5xx/네트워크 오류는 최대 3회 시도한다. 8시간 이상 지난 토큰은 등록 시 정리한다.
+| 시점 | 이벤트 | 비고 |
+| --- | --- | --- |
+| ThinQ 건조기 진행 중 상태/남은 시간 변경 | `update` | 상태가 바뀌면 즉시(priority 10), 종료 예상 시각이 2분 이상 어긋났을 때만(priority 5, 세션당 60초 간격 제한). 카운트다운 자체는 앱이 `Text(timerInterval:)`로 그린다 |
+| 세션 종료(`finishUsingMachine`) | `update` (`state: END`) | **`end`를 보내지 않는다.** 완료 후에도 Dynamic Island/잠금화면에 남는다. 토큰도 유지. `notifyOnCompletion`과 무관 |
+| 같은 기계에서 새 세션 시작, 또는 다른 사용자의 완료 확인 후 재등록 | `end` | 지난 세션의 "완료" activity를 즉시 제거하고 토큰 삭제 |
+| 앱이 로컬에서 `activity.end` (수거 확인 등) | - | 앱이 `DELETE /machine/:uuid/live-activity`로 토큰을 정리 |
+
+- 완료 후 activity는 앱이 끝내거나 위 서버 `end`가 올 때까지 남는다. iOS는 시작 후 최대 8시간이면 시스템이 종료한다. 9시간 이상 지난 토큰은 등록 시 정리한다.
+- 410 또는 400 `BadDeviceToken`/`DeviceTokenNotForTopic`은 무효 토큰으로 보고 삭제한다. 429/5xx/네트워크 오류는 최대 3회 시도한다.
 - content-state(키는 Swift `ContentState`의 `Codable` 키와 정확히 일치해야 한다. 시간은 epoch 초):
 
 ```json
-{ "state": "END", "endsAt": 1790000000, "remainingMinutes": 0, "updatedAt": 1790000000 }
+{ "state": "RUNNING", "endsAt": 1790001200, "remainingMinutes": 20, "updatedAt": 1790000000 }
 ```
 
-`state`는 `RUNNING | COOLING | PAUSE | DETECTING | END | ERROR`. end에는 `dismissal-date`를 지정하지 않는다. iOS 기본 동작대로 종료된 Live Activity가 잠금화면에 최대 4시간 남고, 사용자가 직접 지울 수 있다(Dynamic Island에서는 즉시 사라진다). 앱은 수거 확인 등 시점에 로컬에서 `activity.end(..., dismissalPolicy: .immediate)`로 지울 수 있다.
+`state`는 `RUNNING | COOLING | PAUSE | DETECTING | END | ERROR`(ThinQ 상태를 서버가 매핑). 남은 시간을 모를 때(`DETECTING` 등)는 `endsAt`, `remainingMinutes`가 `null`이다.
 
 ### 환경변수
 

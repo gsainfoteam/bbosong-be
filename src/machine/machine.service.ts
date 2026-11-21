@@ -504,7 +504,15 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       // Re-check after the snapshot write so an admin unmap cannot reopen usage.
       const machine = await this.machineRepository.getMachine(uuid);
       if (!machine?.thinqDeviceId || machine.thinqDeviceId !== deviceId) return;
-      await this.startUsingMachine(uuid);
+      const usingMachine = await this.startUsingMachine(uuid);
+      await this.dispatchNotification(
+        () =>
+          this.liveActivityService.syncRunning(usingMachine.uuid, {
+            state: currentState ?? null,
+            remainingMinutes,
+          }),
+        `Live Activity update for machine ${uuid}`,
+      );
     } else {
       await this.finishUsingMachine(uuid);
     }
@@ -595,6 +603,10 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         machineUuid,
         usageUuid,
       );
+    await this.dispatchNotification(
+      () => this.liveActivityService.endForUsingMachine(previous.uuid),
+      `Live Activity end for machine ${machineUuid}`,
+    );
     if (previous.userUuid) {
       await this.dispatchNotification(
         () =>
@@ -683,7 +695,8 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   /**
    * Registers the push token of a Live Activity for the user's running
    * session on the machine. If the session already ended (the app was
-   * suspended before the token arrived), the activity is ended right away.
+   * suspended before the token arrived), the activity shows "done" right away
+   * and stays until ended explicitly.
    */
   async registerLiveActivity(
     userUuid: string,
@@ -713,7 +726,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
           machineUuid,
         );
       if (current?.uuid !== running.uuid) {
-        await this.liveActivityService.endForUsingMachine(running.uuid);
+        await this.liveActivityService.completeForUsingMachine(running.uuid);
       }
       return;
     }
@@ -731,7 +744,12 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         'No running machine usage session for the current user.',
       );
     }
-    await this.liveActivityService.endUnregisteredToken(dto);
+    await this.liveActivityService.registerCompletedToken({
+      userUuid,
+      usingMachineUuid: ended.uuid,
+      pushToken: dto.pushToken,
+      environment: dto.environment,
+    });
   }
 
   async unregisterLiveActivity(
@@ -754,11 +772,21 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     userUuid?: string,
     notifyOnCompletion = true,
   ): Promise<UsingMachine> {
-    return await this.usingMachineRepository.createUsingMachine(
+    const usingMachine = await this.usingMachineRepository.createUsingMachine(
       machineUuid,
       userUuid,
       notifyOnCompletion,
     );
+    // Live Activities still showing "done" for earlier sessions are obsolete.
+    await this.dispatchNotification(
+      () =>
+        this.liveActivityService.endStaleForMachine(
+          machineUuid,
+          usingMachine.uuid,
+        ),
+      `stale Live Activity cleanup for machine ${machineUuid}`,
+    );
+    return usingMachine;
   }
 
   async finishUsingMachine(machineUuid: string): Promise<void> {
@@ -772,7 +800,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     const notifyUserUuid = usingMachine?.notifyOnCompletion
       ? usingMachine.userUuid
       : null;
-    // The completion alert (FCM / Web Push) and the silent Live Activity end
+    // The completion alert (FCM / Web Push) and the silent Live Activity update
     // are independent; neither waits for or blocks the other.
     await Promise.all([
       notifyUserUuid
@@ -786,8 +814,9 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
           )
         : undefined,
       this.dispatchNotification(
-        () => this.liveActivityService.endForUsingMachine(usingMachine.uuid),
-        `Live Activity end for machine ${machineUuid}`,
+        () =>
+          this.liveActivityService.completeForUsingMachine(usingMachine.uuid),
+        `Live Activity completion for machine ${machineUuid}`,
       ),
     ]);
 

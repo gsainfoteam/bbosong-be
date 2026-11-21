@@ -92,7 +92,7 @@ describe('ApnsService', () => {
     );
   });
 
-  it('sends a silent end event to the production host', async () => {
+  it('sends a silent end event that dismisses immediately to the production host', async () => {
     post.mockResolvedValue(ok);
     await expect(
       create().sendLiveActivityEnd(token, contentState, now),
@@ -112,10 +112,34 @@ describe('ApnsService', () => {
         timestamp: seconds,
         event: 'end',
         'content-state': contentState,
+        'dismissal-date': seconds,
       },
     });
     expect(body).not.toContain('"alert"');
-    expect(body).not.toContain('dismissal-date');
+  });
+
+  it('sends an update that keeps the activity alive', async () => {
+    post.mockResolvedValue(ok);
+    const state = { ...contentState, state: 'RUNNING' as const };
+    await expect(
+      create().sendLiveActivityUpdate(token, state, {}, now),
+    ).resolves.toBe('sent');
+    const [, , headers, body] = post.mock.calls[0];
+    expect(headers['apns-priority']).toBe('5');
+    expect(JSON.parse(body)).toEqual({
+      aps: {
+        timestamp: Math.floor(now.getTime() / 1000),
+        event: 'update',
+        'content-state': state,
+      },
+    });
+    await create().sendLiveActivityUpdate(
+      token,
+      state,
+      { highPriority: true },
+      now,
+    );
+    expect(post.mock.calls[1][2]['apns-priority']).toBe('10');
   });
 
   it('uses the sandbox host for SANDBOX tokens', async () => {

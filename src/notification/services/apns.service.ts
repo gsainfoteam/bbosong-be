@@ -16,6 +16,8 @@ const APNS_HOSTS: Record<LiveActivityEnvironment, string> = {
 const JWT_TTL_MS = 40 * 60_000;
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
+/** Stale progress updates are worthless, so APNs need not hold them long. */
+const UPDATE_EXPIRATION_SECONDS = 5 * 60;
 /** Let APNs hold the end event for an offline device for this long. */
 const END_EXPIRATION_SECONDS = 60 * 60;
 
@@ -116,11 +118,33 @@ export class ApnsService implements OnModuleInit {
     return token.length > 12 ? `...${token.slice(-8)}` : token;
   }
 
-  /**
-   * Ends a Live Activity. No `dismissal-date` is sent on purpose: iOS then
-   * keeps the finished activity on the Lock Screen (up to 4 hours) so the user
-   * can see it is done and dismiss it themselves after picking up the laundry.
-   */
+  /** Pushes a new content state; the activity stays on screen. */
+  async sendLiveActivityUpdate(
+    token: { pushToken: string; environment: LiveActivityEnvironment },
+    contentState: LiveActivityContentState,
+    options: { highPriority?: boolean } = {},
+    now: Date = new Date(),
+  ): Promise<ApnsSendResult> {
+    const seconds = Math.floor(now.getTime() / 1000);
+    return this.send(
+      token,
+      {
+        aps: {
+          timestamp: seconds,
+          event: 'update',
+          'content-state': contentState,
+        },
+      },
+      {
+        // Priority 5 is power-friendly and not budget-limited; use 10 for
+        // state changes the user should see right away.
+        priority: options.highPriority ? '10' : '5',
+        expiration: seconds + UPDATE_EXPIRATION_SECONDS,
+      },
+    );
+  }
+
+  /** Ends a Live Activity and removes it from the screen immediately. */
   async sendLiveActivityEnd(
     token: { pushToken: string; environment: LiveActivityEnvironment },
     contentState: LiveActivityContentState,
@@ -134,6 +158,8 @@ export class ApnsService implements OnModuleInit {
           timestamp: seconds,
           event: 'end',
           'content-state': contentState,
+          // A dismissal date that is not in the future removes it right away.
+          'dismissal-date': seconds,
         },
       },
       { priority: '10', expiration: seconds + END_EXPIRATION_SECONDS },
