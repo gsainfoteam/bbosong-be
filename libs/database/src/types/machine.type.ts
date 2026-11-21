@@ -16,3 +16,6 @@ export type LaundryRoomSummary = {
 export type MachineWithUsage = Machine & {
   currentUsage: UsingMachine | null;
 };
+
+export type UsingMachineWithThinq = UsingMachine &
+  Pick<Machine, 'thinqRemainingMinutes' | 'thinqUpdatedAt'>;

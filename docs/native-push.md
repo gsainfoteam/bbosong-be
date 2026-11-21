@@ -85,3 +85,50 @@ FCM에서는 `notification`(title/body) + data map으로 전달하며 data 값�
 5. 서비스 계정 JSON을 gitops 시크릿에 `FIREBASE_SERVICE_ACCOUNT_JSON`으로 등록한다(staging → production). 필요하면 `FCM_ANDROID_CHANNEL_ID`도 추가한다.
 6. 앱에서 `FCM_ANDROID_CHANNEL_ID`와 같은 ID로 Android 알림 채널을 생성한다.
 7. 배포 후 로그에 `FCM push to native devices is disabled` 경고가 없는지 확인하고, 테스트 기기에서 실제 수신을 확인한다.
+
+## iOS Live Activity (APNs 직접 발송)
+
+건조기 남은 시간을 잠금화면/Dynamic Island에 보여주는 Live Activity는 FCM으로 갱신할 수 없어, 서버가 APNs(`apns-push-type: liveactivity`)로 직접 보낸다. 기존 FCM 완료 알림(alert)과는 별개이며, Live Activity 푸시는 모두 alert 없이 무음이다.
+
+### API
+
+| 메서드 | 경로 | 설명 |
+| --- | --- | --- |
+| `POST` | `/machine/:uuid/live-activity` | Live Activity push token 등록. body `{ pushToken, environment }` |
+| `DELETE` | `/machine/:uuid/live-activity` | 등록 해제. body `{ pushToken }` (없는 토큰도 200) |
+
+- `pushToken`: ActivityKit `pushTokenUpdates`의 hex 문자열. **activity마다, 기기마다 다르고 도중에 바뀔 수 있으므로** 바뀔 때마다 다시 등록한다(upsert).
+- `environment`: `SANDBOX`(Debug 빌드) / `PRODUCTION`(TestFlight·App Store). 서버가 APNs 호스트(`api.sandbox.push.apple.com` / `api.push.apple.com`)를 고르는 데만 쓴다.
+- 요청한 사용자의 진행 중 세션이 있어야 한다(없으면 404, 남의 세션이면 403). 세션이 방금 끝났다면(8시간 이내) 토큰을 저장하고 즉시 "완료" 상태를 보낸다.
+- 한 세션에 여러 기기의 토큰이 등록될 수 있고, 서버는 모두에게 보낸다. 기기 간 자동 전파는 없다(각 기기 앱이 자기 activity를 시작하고 토큰을 등록해야 한다).
+
+### 발송 시점
+
+| 시점 | 이벤트 | 비고 |
+| --- | --- | --- |
+| ThinQ 건조기 진행 중 상태/남은 시간 변경 | `update` | 상태가 바뀌면 즉시(priority 10), 종료 예상 시각이 2분 이상 어긋났을 때만(priority 5, 세션당 60초 간격 제한). 전송이 실패하면 다음 동기화에서 같은 내용을 다시 보낸다. 카운트다운 자체는 앱이 `Text(timerInterval:)`로 그린다 |
+| 세션 종료(`finishUsingMachine`) | `update` (`state: END`) | **`end`를 보내지 않는다.** 완료 후에도 Dynamic Island/잠금화면에 남는다. 토큰도 유지. `notifyOnCompletion`과 무관 |
+| 다른 사용자가 완료 확인 후 같은 기계를 재등록 | `update` (`state: END`) | 이전 사용자는 여전히 수거해야 하므로 `end`를 보내지 않고 "완료"로 남긴다. 같은 기계에 새 세션이 시작돼도 이전 사용자의 activity에는 아무것도 보내지 않는다 |
+| 사용자가 `DELETE /machine/:uuid/register`로 기계 추적을 해제 | `end` | 그 사용자의 해당 기계 activity(진행 중·완료 상태 모두)를 즉시 제거하고 토큰 삭제. 진행 중 세션이 없어 404를 반환하는 경우에도 정리한다. APNs 전송이 실패한 토큰은 남겨 두었다가, 이후 세션의 update/완료 시점에 `end`만 다시 시도한다(일반 update는 보내지 않는다) |
+| 앱이 로컬에서 `activity.end` (수거 확인 등) | - | 앱이 `DELETE /machine/:uuid/live-activity`로 토큰을 정리 |
+
+- 완료 후 activity는 앱이 끝내거나(수거 확인 등), 사용자가 추적을 해제하거나(위 표), 시스템이 종료할 때까지 남는다. iOS는 시작 후 최대 8시간이면 시스템이 종료한다. 9시간 이상 지난 토큰은 등록 시 정리한다.
+- 410 또는 400 `BadDeviceToken`/`DeviceTokenNotForTopic`은 무효 토큰으로 보고 삭제한다. 429/5xx/네트워크 오류는 최대 3회 시도한다.
+- content-state(키는 Swift `ContentState`의 `Codable` 키와 정확히 일치해야 한다. 시간은 epoch 초):
+
+```json
+{ "state": "RUNNING", "endsAt": 1790001200, "remainingMinutes": 20, "updatedAt": 1790000000 }
+```
+
+`state`는 `RUNNING | COOLING | PAUSE | DETECTING | END | ERROR`(ThinQ 상태를 서버가 매핑). 남은 시간을 모를 때(`DETECTING` 등)는 `endsAt`, `remainingMinutes`가 `null`이다.
+
+### 환경변수
+
+| 이름 | 필수 | 설명 |
+| --- | --- | --- |
+| `APNS_KEY_P8` | 아니오 | APNs 인증 키(.p8) PEM 또는 그 base64. 비밀 값. 하나라도 미설정이면 Live Activity 발송은 비활성화(경고 로그)된다 |
+| `APNS_KEY_ID` | 아니오 | 키의 Key ID(10자) |
+| `APNS_TEAM_ID` | 아니오 | Apple Developer Team ID(10자) |
+| `APNS_BUNDLE_ID` | 아니오 | iOS 앱 번들 ID. `apns-topic`은 `<번들 ID>.push-type.liveactivity` |
+
+키 하나로 SANDBOX/PRODUCTION 모두 발송한다. 위 FCM용으로 올린 .p8을 재사용할 수 있지만 서버에도 별도로 주입해야 한다.

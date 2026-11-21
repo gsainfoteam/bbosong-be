@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import type { UsingMachineWithThinq } from '@lib/database/types/machine.type';
 
 export class GetUsingMachineResDto {
   @ApiProperty({
@@ -39,4 +40,37 @@ export class GetUsingMachineResDto {
     nullable: true,
   })
   endedAt: Date | null;
+}
+
+export class GetActiveUsingMachineResDto extends GetUsingMachineResDto {
+  @ApiProperty({
+    description:
+      'Remaining minutes from the machine ThinQ timer as of thinqUpdatedAt; null when unavailable (e.g. not a ThinQ machine or still detecting)',
+    example: 20,
+    nullable: true,
+    type: Number,
+  })
+  remainingMinutes: number | null;
+
+  @ApiProperty({
+    description:
+      'Time the ThinQ state (and remainingMinutes) was last updated. Estimated end time = thinqUpdatedAt + remainingMinutes',
+    example: '2026-08-01T14:50:00.000Z',
+    nullable: true,
+    type: String,
+    format: 'date-time',
+  })
+  thinqUpdatedAt: Date | null;
+
+  constructor(usage: UsingMachineWithThinq) {
+    super();
+    this.uuid = usage.uuid;
+    this.machineUuid = usage.machineUuid;
+    this.userUuid = usage.userUuid;
+    this.notifyOnCompletion = usage.notifyOnCompletion;
+    this.startedAt = usage.startedAt;
+    this.endedAt = usage.endedAt;
+    this.remainingMinutes = usage.thinqRemainingMinutes;
+    this.thinqUpdatedAt = usage.thinqUpdatedAt;
+  }
 }

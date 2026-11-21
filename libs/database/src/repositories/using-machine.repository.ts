@@ -17,6 +17,7 @@ import {
 } from 'generated/prisma/client';
 import { MACHINE_REREGISTRATION_MIN_DURATION_MS } from '../constants/machine-registration';
 import { Trace } from '@gsainfoteam/nest-observability';
+import type { UsingMachineWithThinq } from '../types/machine.type';
 
 export type UsageStatsDimension =
   'date' | 'weekday' | 'hour' | 'location' | 'gender';
@@ -97,12 +98,26 @@ export class UsingMachineRepository {
   }
 
   // Get only open sessions linked to a user
-  async getUsingMachinesByUser(userUuid: string): Promise<UsingMachine[]> {
+  async getUsingMachinesByUser(
+    userUuid: string,
+  ): Promise<UsingMachineWithThinq[]> {
     return await this.databaseService.usingMachine
       .findMany({
         where: { userUuid, endedAt: null, machine: { deletedAt: null } },
         orderBy: [{ startedAt: 'desc' }, { uuid: 'desc' }],
+        include: {
+          machine: {
+            select: { thinqRemainingMinutes: true, thinqUpdatedAt: true },
+          },
+        },
       })
+      .then((usages) =>
+        usages.map(({ machine, ...usage }) => ({
+          ...usage,
+          thinqRemainingMinutes: machine.thinqRemainingMinutes,
+          thinqUpdatedAt: machine.thinqUpdatedAt,
+        })),
+      )
       .catch((error) => {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
           this.logger.error(
@@ -271,6 +286,27 @@ export class UsingMachineRepository {
         }
         this.logger.error(`getUsingMachineByMachineUuid error: ${error}`);
         throw new InternalServerErrorException('Unknown Error');
+      });
+  }
+
+  // Most recently ended session of the user on the machine (any age).
+  async getLatestEndedUsingMachineByUser(
+    userUuid: string,
+    machineUuid: string,
+  ): Promise<UsingMachine | null> {
+    return await this.databaseService.usingMachine
+      .findFirst({
+        where: {
+          userUuid,
+          machineUuid,
+          endedAt: { not: null },
+          machine: { deletedAt: null },
+        },
+        orderBy: [{ endedAt: 'desc' }, { uuid: 'desc' }],
+      })
+      .catch((error) => {
+        this.logger.error(`getLatestEndedUsingMachineByUser error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
       });
   }
 

@@ -15,6 +15,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBadRequestResponse,
+  ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -51,8 +52,13 @@ import { GetMachineDetailResDto } from './dto/res/get-machine-detail-res.dto';
 import { GetMachinePowerReqDto } from './dto/req/get-machine-power-req.dto';
 import { GetMachinePowerResDto } from './dto/res/get-machine-power-res.dto';
 import { GetMachineUsageHistoryReqDto } from './dto/req/get-machine-usage-history-req.dto';
-import { GetUsingMachineResDto } from './dto/res/get-using-machine-res.dto';
+import {
+  GetActiveUsingMachineResDto,
+  GetUsingMachineResDto,
+} from './dto/res/get-using-machine-res.dto';
 import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto';
+import { RegisterLiveActivityReqDto } from './dto/req/register-live-activity-req.dto';
+import { UnregisterLiveActivityReqDto } from './dto/req/unregister-live-activity-req.dto';
 import { SuccessResDto } from '../common/dto/res/success-res.dto';
 import { ThinqService } from '../thinq/thinq.service';
 
@@ -249,20 +255,21 @@ export class MachineController {
   @ApiOperation({
     summary: 'Get machines currently used by current user',
     description:
-      "Retrieve active machine usage sessions linked to the authenticated user's account.",
+      "Retrieve active machine usage sessions linked to the authenticated user's account, including the ThinQ remaining minutes (remainingMinutes, as of thinqUpdatedAt) when available.",
   })
   @ApiBearerAuth('user')
   @UseGuards(UserGuard)
   @ApiOkResponse({
-    type: GetUsingMachineResDto,
+    type: GetActiveUsingMachineResDto,
     isArray: true,
     description: "Successfully retrieved the user's machine usage sessions.",
   })
   @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
   async getUsingMachinesByUser(
     @GetUser() user: User,
-  ): Promise<GetUsingMachineResDto[]> {
-    return await this.machineService.getUsingMachinesByUser(user.uuid);
+  ): Promise<GetActiveUsingMachineResDto[]> {
+    const usages = await this.machineService.getUsingMachinesByUser(user.uuid);
+    return usages.map((usage) => new GetActiveUsingMachineResDto(usage));
   }
 
   @Get('/me/history')
@@ -516,6 +523,65 @@ export class MachineController {
         machineUuid,
       );
     }
+    return { success: true };
+  }
+
+  @Post('/:uuid/live-activity')
+  @ApiOperation({
+    summary: 'Register iOS Live Activity push token',
+    description:
+      "Register the APNs push token of the app's Live Activity for the machine the authenticated user is running, so the server can keep it up to date (state and finish time) and show a done state when the session finishes. The Live Activity stays on screen after completion until the app ends it or the user unlinks from the machine (which makes the server end it); a new session or another user registering the machine does not end it. Idempotent per token; send the new token whenever it rotates. If the session already ended, the done state is pushed immediately.",
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiBody({ type: RegisterLiveActivityReqDto })
+  @ApiOkResponse({
+    type: SuccessResDto,
+    description: 'Successfully registered the Live Activity token.',
+  })
+  @ApiBadRequestResponse({ description: 'Invalid push token or environment.' })
+  @ApiForbiddenResponse({
+    description: 'The machine is being used by someone else.',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'The user has no running (or recently ended) session on the machine.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async registerLiveActivity(
+    @Param('uuid', ParseUUIDPipe) machineUuid: string,
+    @GetUser() user: User,
+    @Body() body: RegisterLiveActivityReqDto,
+  ) {
+    await this.machineService.registerLiveActivity(
+      user.uuid,
+      machineUuid,
+      body,
+    );
+    return { success: true };
+  }
+
+  @Delete('/:uuid/live-activity')
+  @ApiOperation({
+    summary: 'Unregister iOS Live Activity push token',
+    description:
+      'Stop updating a Live Activity (call when the app ends it, e.g. the user picked up the laundry or dismissed it). Succeeds even if the token is unknown or belongs to another account.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiBody({ type: UnregisterLiveActivityReqDto })
+  @ApiOkResponse({
+    type: SuccessResDto,
+    description: 'Successfully unregistered the Live Activity token.',
+  })
+  @ApiBadRequestResponse({ description: 'Invalid push token.' })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async unregisterLiveActivity(
+    @Param('uuid', ParseUUIDPipe) _machineUuid: string,
+    @GetUser() user: User,
+    @Body() body: UnregisterLiveActivityReqDto,
+  ) {
+    await this.machineService.unregisterLiveActivity(user.uuid, body.pushToken);
     return { success: true };
   }
 
