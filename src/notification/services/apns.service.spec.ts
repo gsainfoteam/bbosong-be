@@ -112,10 +112,10 @@ describe('ApnsService', () => {
         timestamp: seconds,
         event: 'end',
         'content-state': contentState,
-        'dismissal-date': seconds + 300,
       },
     });
     expect(body).not.toContain('"alert"');
+    expect(body).not.toContain('dismissal-date');
   });
 
   it('uses the sandbox host for SANDBOX tokens', async () => {

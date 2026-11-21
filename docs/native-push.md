@@ -112,7 +112,7 @@ FCM에서는 `notification`(title/body) + data map으로 전달하며 data 값�
 { "state": "END", "endsAt": 1790000000, "remainingMinutes": 0, "updatedAt": 1790000000 }
 ```
 
-`state`는 `RUNNING | COOLING | PAUSE | DETECTING | END | ERROR`. end 후 `dismissal-date`는 5분 뒤다.
+`state`는 `RUNNING | COOLING | PAUSE | DETECTING | END | ERROR`. end에는 `dismissal-date`를 지정하지 않는다. iOS 기본 동작대로 종료된 Live Activity가 잠금화면에 최대 4시간 남고, 사용자가 직접 지울 수 있다(Dynamic Island에서는 즉시 사라진다). 앱은 수거 확인 등 시점에 로컬에서 `activity.end(..., dismissalPolicy: .immediate)`로 지울 수 있다.
 
 ### 환경변수
 

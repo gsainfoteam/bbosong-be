@@ -16,8 +16,6 @@ const APNS_HOSTS: Record<LiveActivityEnvironment, string> = {
 const JWT_TTL_MS = 40 * 60_000;
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
-/** How long the finished activity stays on screen before iOS removes it. */
-export const LIVE_ACTIVITY_END_DISMISS_SECONDS = 5 * 60;
 /** Let APNs hold the end event for an offline device for this long. */
 const END_EXPIRATION_SECONDS = 60 * 60;
 
@@ -118,7 +116,11 @@ export class ApnsService implements OnModuleInit {
     return token.length > 12 ? `...${token.slice(-8)}` : token;
   }
 
-  /** Ends a Live Activity; the activity is dismissed shortly afterwards. */
+  /**
+   * Ends a Live Activity. No `dismissal-date` is sent on purpose: iOS then
+   * keeps the finished activity on the Lock Screen (up to 4 hours) so the user
+   * can see it is done and dismiss it themselves after picking up the laundry.
+   */
   async sendLiveActivityEnd(
     token: { pushToken: string; environment: LiveActivityEnvironment },
     contentState: LiveActivityContentState,
@@ -132,7 +134,6 @@ export class ApnsService implements OnModuleInit {
           timestamp: seconds,
           event: 'end',
           'content-state': contentState,
-          'dismissal-date': seconds + LIVE_ACTIVITY_END_DISMISS_SECONDS,
         },
       },
       { priority: '10', expiration: seconds + END_EXPIRATION_SECONDS },
