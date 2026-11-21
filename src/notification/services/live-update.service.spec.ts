@@ -215,7 +215,11 @@ describe('LiveUpdateService', () => {
 
       await sync('RUNNING', 'user-1', 5);
       fcmService.sendLiveUpdateToUser.mockClear();
-      await service.tick(later(400)); // endsAt (5m) already passed
+      await service.tick(later(400)); // endsAt (5m) passed: only the final message
+      expect(sent()).toHaveLength(1);
+      expect(sent()[0][1].remainingMinutes).toBe('0');
+      fcmService.sendLiveUpdateToUser.mockClear();
+      await service.tick(later(700));
       expect(sent()).toHaveLength(0);
 
       await sync('ERROR', 'user-1', 20, later(500));
@@ -302,6 +306,102 @@ describe('LiveUpdateService', () => {
       expect(sent()).toHaveLength(2);
       await service.tick(later(360));
       expect(sent()).toHaveLength(3);
+    });
+
+    describe('final message at endsAt', () => {
+      // sync at `now` with 20 min left => endsAt = later(1200)
+      const finals = () => sent().filter(([, d]) => d.remainingMinutes === '0');
+
+      it('sends once right after endsAt, ignoring the tick interval', async () => {
+        await sync('RUNNING');
+        await service.tick(later(1199));
+        expect(finals()).toHaveLength(0);
+        await service.tick(later(1200));
+        expect(finals()).toHaveLength(1);
+        const [owner, data] = finals()[0];
+        expect(owner).toBe('user-1');
+        expect(data).toMatchObject({
+          type: 'LIVE_UPDATE',
+          state: 'RUNNING',
+          endsAt: String(Math.floor(later(1200).getTime() / 1000)),
+        });
+      });
+
+      it('sends only once per endsAt and then no ticks', async () => {
+        await sync('COOLING');
+        await service.tick(later(1205));
+        const count = sent().length;
+        await service.tick(later(1220));
+        await service.tick(later(2000));
+        expect(sent()).toHaveLength(count);
+        expect(finals()).toHaveLength(1);
+        expect(finals()[0][1].state).toBe('COOLING');
+      });
+
+      it('does not resend for a past endsAt re-synced with the same value', async () => {
+        await sync('RUNNING');
+        await service.tick(later(1201));
+        await sync('RUNNING', 'user-1', 0, later(1260));
+        await service.tick(later(1300));
+        expect(finals()).toHaveLength(1);
+      });
+
+      it('re-arms when a sync extends endsAt', async () => {
+        await sync('RUNNING');
+        await service.tick(later(1201));
+        expect(finals()).toHaveLength(1);
+        await sync('RUNNING', 'user-1', 10, later(1210)); // now ends later(1810)
+        await service.tick(later(1500));
+        expect(finals()).toHaveLength(1); // not yet; regular ticks resume
+        expect(sent().at(-1)![1].remainingMinutes).not.toBe('0');
+        await service.tick(later(1810));
+        expect(finals()).toHaveLength(2);
+      });
+
+      it('skips PAUSE and unknown finish time', async () => {
+        await sync('PAUSE');
+        await service.tick(later(1300));
+        expect(finals()).toHaveLength(0);
+        service = create();
+        fcmService.sendLiveUpdateToUser.mockClear();
+        await sync('DETECTING', 'user-1', null);
+        await service.tick(later(1300));
+        expect(sent()).toHaveLength(1);
+      });
+
+      it('skips sessions registered with an already past endsAt', async () => {
+        await sync('RUNNING', 'user-1', 0);
+        await service.tick(later(60));
+        await service.tick(later(600));
+        expect(sent()).toHaveLength(1);
+      });
+
+      it('retries a failed send at the tick interval, at most 3 times', async () => {
+        await sync('RUNNING');
+        fcmService.sendLiveUpdateToUser.mockResolvedValue({
+          sent: 0,
+          failed: 1,
+        });
+        await service.tick(later(1200));
+        await service.tick(later(1250));
+        expect(finals()).toHaveLength(1);
+        await service.tick(later(1380));
+        await service.tick(later(1560));
+        await service.tick(later(1740));
+        await service.tick(later(2000));
+        expect(finals()).toHaveLength(3);
+      });
+
+      it('stops when the owner has no Live Update device', async () => {
+        await sync('RUNNING');
+        fcmService.sendLiveUpdateToUser.mockResolvedValue({
+          sent: 0,
+          failed: 0,
+        });
+        await service.tick(later(1200));
+        await service.tick(later(1500));
+        expect(finals()).toHaveLength(1);
+      });
     });
 
     it('does nothing when ticks are disabled', async () => {

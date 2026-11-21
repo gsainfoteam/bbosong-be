@@ -172,9 +172,17 @@ Android 16 Live Update(`Notification.ProgressStyle`)는 서버 `notification` �
 | ThinQ 건조기 진행 중 **상태가 바뀔 때**(또는 세션 owner가 바뀌었을 때) | 해당 `state`. 기기에 닿지 못하면 다음 동기화에서 재시도 |
 | 같은 상태에서 **종료 예상 시각이 2분 이상 어긋났을 때**(또는 남은 시간이 알려지거나 사라졌을 때) | 갱신된 `endsAt`/`remainingMinutes`. 세션당 60초 간격 제한. iOS Live Activity와 같은 규칙 |
 | 위 메시지(전이/보정/tick) 중 마지막 발송 후 **tick 간격**이 지났고 `endsAt`을 알 때(`RUNNING`/`COOLING`/`PAUSE`, 아직 `endsAt` 전) | tick. 상태 전이·보정 발송 시점부터 타이머가 다시 시작돼 직후 중복 발송이 없다. 일부 기기 전송 실패 시 다음 tick에서 다시 시도한다 |
+| `endsAt`을 아는 `RUNNING`/`COOLING` 건조기 세션이 `endsAt`에 **도달하거나 지난 뒤 처음 확인될 때**(15초 확인 주기) | 마무리 `LIVE_UPDATE` 1회: 그 시점의 최신 `state`와 `endsAt`(그대로), `remainingMinutes`=`"0"`. tick 간격과 무관하게 즉시 보낸다. 앱은 `now >= endsAt`로 판단해 카운트다운 없이 "곧 끝나요"/진행률 100%로 그린다. 같은 `endsAt`에는 한 번만 보낸다 |
 | 세션 종료(`finishUsingMachine`) | `END` (`notifyOnCompletion`과 무관) |
 | 다른 사용자가 완료 확인 후 기계를 재등록 | 이전 사용자에게 `END` |
 | 사용자가 `DELETE /machine/:uuid/register`로 추적 해제 | 그 사용자에게 `END` |
+
+마무리 메시지 규칙:
+- 대상은 `endsAt`을 아는 `RUNNING`/`COOLING` 건조기뿐이다. 세탁기, `endsAt`을 모르는 상태(`DETECTING` 등), `PAUSE`, `END`/`ERROR`는 제외한다. 이후에는 tick을 보내지 않고, `END`/`ERROR`는 기존처럼 종료 처리한다.
+- **이미 지난 `endsAt`으로 새로 기록되는 세션(등록·상태 전이·보정 시점에 `endsAt <= 현재`)에는 마무리 메시지를 따로 보내지 않는다.** 그 시점에 나가는 전이/보정 메시지가 이미 지난 `endsAt`을 담고 있어 앱이 "곧 끝나요"로 그리기 때문이다.
+- ThinQ 동기화로 `endsAt`이 미래로 늘어나면 마무리 상태가 리셋되어 일반 tick이 다시 동작하고, 새 `endsAt`에 도달하면 마무리 메시지를 다시 한 번 보낸다. 늘어난 `endsAt`은 기존 보정 규칙(2분 이상 어긋남, 60초 간격 제한)으로 앱에 전달된다. 2분 미만 연장은 보정 대상이 아니지만 다음 tick이 최신 `endsAt`을 담아 보낸다.
+- 일부 기기 전송 실패 시 tick 간격마다 재시도하며 최대 3회(첫 발송 포함)에서 포기한다. 무효 토큰 정리는 기존 `deliver()` 경로다. owner의 Live Update 기기가 없으면 세션 추적을 멈춘다.
+- `LIVE_UPDATE_TICK_INTERVAL_SECONDS=0`(tick 비활성화)이면 마무리 메시지도 보내지 않는다.
 
 tick은 `endsAt`을 모르는 상태(`DETECTING` 등), `END`/`ERROR`, 세탁기, `endsAt`이 지난 세션에는 보내지 않는다. 세션 종료·추적 해제·owner 변경(이전 owner)이면 중단하고, owner의 Live Update 기기가 하나도 없으면(구독 해제/`supportsLiveUpdate=false`) 그 세션의 tick을 멈춘다(다음 ThinQ 동기화에서 다시 등록).
 
