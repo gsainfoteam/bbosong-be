@@ -12,11 +12,21 @@ describe('LiveUpdateService', () => {
   );
   const now = new Date('2026-11-21T00:10:00Z');
   let service: LiveUpdateService;
+  const configGet = jest.fn();
+  const create = (tickSeconds?: string) => {
+    configGet.mockReturnValue(tickSeconds);
+    return new LiveUpdateService(
+      fcmService as never,
+      {
+        get: configGet,
+      } as never,
+    );
+  };
 
   beforeEach(() => {
     jest.resetAllMocks();
     fcmService.sendLiveUpdateToUser.mockResolvedValue({ sent: 1, failed: 0 });
-    service = new LiveUpdateService(fcmService as never);
+    service = create();
   });
 
   const sync = (
@@ -115,5 +125,164 @@ describe('LiveUpdateService', () => {
   it('does not send an end message without a user', async () => {
     await service.end('session-1', null, session, now);
     expect(fcmService.sendLiveUpdateToUser).not.toHaveBeenCalled();
+  });
+
+  describe('tick', () => {
+    const sent = () =>
+      fcmService.sendLiveUpdateToUser.mock.calls as [
+        string,
+        Record<string, string>,
+      ][];
+
+    it('defaults to 3 minutes and reads LIVE_UPDATE_TICK_INTERVAL_SECONDS', () => {
+      expect(service.tickIntervalMs).toBe(180_000);
+      expect(create('300').tickIntervalMs).toBe(300_000);
+      expect(create('0').tickIntervalMs).toBe(0);
+      expect(create('10').tickIntervalMs).toBe(180_000);
+      expect(create('abc').tickIntervalMs).toBe(180_000);
+    });
+
+    it('sends a tick every interval with the latest values', async () => {
+      await sync('RUNNING', 'user-1', 20); // endsAt = now + 20m
+      await service.tick(later(179));
+      expect(sent()).toHaveLength(1);
+      await service.tick(later(180));
+      expect(sent()).toHaveLength(2);
+      expect(sent()[1]).toEqual([
+        'user-1',
+        expect.objectContaining({
+          type: 'LIVE_UPDATE',
+          state: 'RUNNING',
+          startedAt: String(Math.floor(session.startedAt!.getTime() / 1000)),
+          endsAt: String(Math.floor(now.getTime() / 1000) + 1200),
+          remainingMinutes: '17',
+          updatedAt: String(Math.floor(later(180).getTime() / 1000)),
+        }),
+      ]);
+      await service.tick(later(300));
+      expect(sent()).toHaveLength(2);
+      await service.tick(later(360));
+      expect(sent()).toHaveLength(3);
+    });
+
+    it('uses the latest endsAt even when the drift was too small to send', async () => {
+      await sync('RUNNING', 'user-1', 20);
+      await sync('RUNNING', 'user-1', 20, later(60)); // finish moved +1m, not sent
+      expect(sent()).toHaveLength(1);
+      await service.tick(later(180));
+      expect(sent()[1][1]).toEqual(
+        expect.objectContaining({
+          endsAt: String(Math.floor(later(60).getTime() / 1000) + 1200),
+        }),
+      );
+    });
+
+    it('restarts the timer after a transition', async () => {
+      await sync('RUNNING', 'user-1', 20);
+      await sync('COOLING', 'user-1', 10, later(150));
+      expect(sent()).toHaveLength(2);
+      await service.tick(later(180)); // 30s after the transition
+      expect(sent()).toHaveLength(2);
+      await service.tick(later(330));
+      expect(sent()).toHaveLength(3);
+      expect(sent()[2][1]).toEqual(
+        expect.objectContaining({ state: 'COOLING' }),
+      );
+    });
+
+    it('restarts the timer after a correction', async () => {
+      await sync('RUNNING', 'user-1', 20);
+      await sync('RUNNING', 'user-1', 40, later(120)); // correction
+      expect(sent()).toHaveLength(2);
+      await service.tick(later(180));
+      expect(sent()).toHaveLength(2);
+      await service.tick(later(300));
+      expect(sent()).toHaveLength(3);
+    });
+
+    it('stops after end, unlink, END/ERROR and past endsAt', async () => {
+      await sync('RUNNING');
+      await service.end('session-1', 'user-1', session, later(10));
+      fcmService.sendLiveUpdateToUser.mockClear();
+      await service.tick(later(600));
+      expect(sent()).toHaveLength(0);
+
+      await sync('RUNNING');
+      await service.end(null, 'user-1', session, later(10)); // unlink
+      fcmService.sendLiveUpdateToUser.mockClear();
+      await service.tick(later(600));
+      expect(sent()).toHaveLength(0);
+
+      await sync('RUNNING', 'user-1', 5);
+      fcmService.sendLiveUpdateToUser.mockClear();
+      await service.tick(later(400)); // endsAt (5m) already passed
+      expect(sent()).toHaveLength(0);
+
+      await sync('ERROR', 'user-1', 20, later(500));
+      fcmService.sendLiveUpdateToUser.mockClear();
+      await service.tick(later(900));
+      expect(sent()).toHaveLength(0);
+    });
+
+    it('ticks only the new owner after an owner change', async () => {
+      await sync('RUNNING', 'user-1');
+      await sync('RUNNING', 'user-2', 20, later(10));
+      fcmService.sendLiveUpdateToUser.mockClear();
+      await service.tick(later(300));
+      expect(sent()).toHaveLength(1);
+      expect(sent()[0][0]).toBe('user-2');
+    });
+
+    it('does not tick without a known finish time', async () => {
+      await sync('DETECTING', 'user-1', null);
+      await service.tick(later(600));
+      expect(sent()).toHaveLength(1);
+    });
+
+    it('does not track washers', async () => {
+      const washer = buildLiveUpdateSession(
+        { uuid: 'machine-2', type: 'WASHER', location: 'A', index: 1 },
+        null,
+      );
+      await service.syncRunning(
+        'session-2',
+        'user-1',
+        washer,
+        { state: 'RUNNING', remainingMinutes: 20 },
+        now,
+      );
+      await service.tick(later(600));
+      expect(sent()).toHaveLength(0);
+    });
+
+    it('stops when the owner has no Live Update device, resumes on next sync', async () => {
+      await sync('RUNNING');
+      fcmService.sendLiveUpdateToUser.mockResolvedValue({ sent: 0, failed: 0 });
+      await service.tick(later(180));
+      await service.tick(later(360));
+      expect(sent()).toHaveLength(2); // initial + one tick, then dropped
+      await sync('RUNNING', 'user-1', 20, later(400));
+      expect(sent()).toHaveLength(3);
+    });
+
+    it('retries a failed tick at the next interval', async () => {
+      await sync('RUNNING');
+      fcmService.sendLiveUpdateToUser.mockResolvedValueOnce({
+        sent: 0,
+        failed: 1,
+      });
+      await service.tick(later(180));
+      await service.tick(later(200));
+      expect(sent()).toHaveLength(2);
+      await service.tick(later(360));
+      expect(sent()).toHaveLength(3);
+    });
+
+    it('does nothing when ticks are disabled', async () => {
+      service = create('0');
+      await sync('RUNNING');
+      await service.tick(later(600));
+      expect(sent()).toHaveLength(1);
+    });
   });
 });
