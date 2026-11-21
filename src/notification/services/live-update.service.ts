@@ -23,6 +23,8 @@ const MIN_TICK_INTERVAL_SECONDS = 60;
 const MAX_TICK_INTERVAL_SECONDS = 3600;
 /** How often the scheduler looks for sessions whose tick is due. */
 const TICK_CHECK_INTERVAL_MS = 15_000;
+/** Total attempts (first + retries) of the one-off message sent at `endsAt`. */
+const MAX_FINAL_ATTEMPTS = 3;
 
 interface LastSent {
   state: string;
@@ -36,6 +38,13 @@ interface LastSent {
   attemptedAt: number;
   /** The transition message did not reach every device: resend on next sync. */
   retryTransition?: boolean;
+  /**
+   * The one-off message at `endsAt` is done (sent, given up, or not wanted
+   * because `endsAt` had already passed when the entry was recorded). Reset when
+   * a sync moves `endsAt` into the future again.
+   */
+  finalDone?: boolean;
+  finalAttempts?: number;
 }
 
 /**
@@ -117,8 +126,22 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
         nowMs - entry.attemptedAt >= this.tickIntervalMs
       );
     });
-    await Promise.all(
-      due.map(async ([key, entry]) => {
+    const finals = [...this.lastSent.entries()].filter(([, entry]) => {
+      const { current } = entry;
+      return (
+        entry.session.kind === MachineType.DRYER &&
+        !entry.finalDone &&
+        current.endsAt !== null &&
+        current.endsAt <= nowSeconds &&
+        (current.state === 'RUNNING' || current.state === 'COOLING') &&
+        // First attempt is immediate (attemptedAt only moves on a retry).
+        (!entry.finalAttempts ||
+          nowMs - entry.attemptedAt >= this.tickIntervalMs)
+      );
+    });
+    await Promise.all([
+      ...finals.map(([key, entry]) => this.sendFinal(key, entry, nowMs)),
+      ...due.map(async ([key, entry]) => {
         const endsAt = entry.current.endsAt!;
         // Claim before sending so overlapping runs do not double-send.
         entry.attemptedAt = nowMs;
@@ -145,7 +168,40 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
         }
         // failed > 0 and nothing sent: retried at the next tick.
       }),
+    ]);
+  }
+
+  /**
+   * One extra `LIVE_UPDATE` once `endsAt` has passed, so the app can swap the
+   * (otherwise negative) countdown for "almost done". Bounded retries.
+   */
+  private async sendFinal(
+    key: string,
+    entry: LastSent,
+    nowMs: number,
+  ): Promise<void> {
+    const nowSeconds = Math.floor(nowMs / 1000);
+    entry.attemptedAt = nowMs; // claim; also spaces out retries
+    entry.finalAttempts = (entry.finalAttempts ?? 0) + 1;
+    const { sent, failed } = await this.fcmService.sendLiveUpdateToUser(
+      entry.ownerUuid,
+      buildLiveUpdateData(entry.session, {
+        state: entry.current.state,
+        endsAt: entry.current.endsAt,
+        remainingMinutes: 0,
+        updatedAt: nowSeconds,
+      }),
     );
+    if (this.lastSent.get(key) !== entry) return;
+    if (sent > 0) {
+      entry.sentAt = nowMs;
+      entry.retryTransition = false;
+      entry.finalDone = true;
+    } else if (failed === 0) {
+      this.lastSent.delete(key);
+    } else if (entry.finalAttempts >= MAX_FINAL_ATTEMPTS) {
+      entry.finalDone = true;
+    }
   }
 
   /**
@@ -175,6 +231,14 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
     if (previous) {
       previous.session = session;
       previous.current = contentState;
+      // The finish time moved ahead again (or is unknown): arm the final message anew.
+      if (
+        contentState.endsAt === null ||
+        contentState.endsAt > Math.floor(now.getTime() / 1000)
+      ) {
+        previous.finalDone = false;
+        previous.finalAttempts = 0;
+      }
     }
     if (!transitioned) {
       const endsAtMoved =
@@ -199,6 +263,10 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
       attemptedAt: now.getTime(),
       session,
       current: contentState,
+      // A finish time that is already past when recorded is not announced again.
+      finalDone:
+        contentState.endsAt !== null &&
+        contentState.endsAt <= Math.floor(now.getTime() / 1000),
     };
     this.lastSent.set(usingMachineUuid, entry);
     const { failed } = await this.fcmService.sendLiveUpdateToUser(
