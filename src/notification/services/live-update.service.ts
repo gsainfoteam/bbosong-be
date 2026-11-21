@@ -34,6 +34,8 @@ interface LastSent {
   current: LiveActivityContentState;
   /** Last send attempt incl. failed ticks; a tick is due `tickMs` after it. */
   attemptedAt: number;
+  /** The transition message did not reach every device: resend on next sync. */
+  retryTransition?: boolean;
 }
 
 /**
@@ -135,6 +137,7 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
         if (this.lastSent.get(key) !== entry) return;
         if (sent > 0) {
           entry.sentAt = nowMs;
+          entry.retryTransition = false;
         } else if (failed === 0) {
           // No Live Update device left (unsubscribed / flag off): stop ticking.
           // The next ThinQ sync registers the session again.
@@ -166,6 +169,7 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
     const previous = this.lastSent.get(usingMachineUuid);
     const transitioned =
       !previous ||
+      previous.retryTransition === true ||
       previous.state !== contentState.state ||
       previous.ownerUuid !== ownerUuid;
     if (previous) {
@@ -203,8 +207,16 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
     );
     // A device that did not get the update must be retried by the next sync.
     if (failed > 0 && this.lastSent.get(usingMachineUuid) === entry) {
-      if (previous) this.lastSent.set(usingMachineUuid, previous);
-      else this.lastSent.delete(usingMachineUuid);
+      if (previous && previous.ownerUuid === ownerUuid) {
+        this.lastSent.set(usingMachineUuid, previous);
+      } else if (previous) {
+        // Owner changed: never restore the old owner's entry (it would keep
+        // ticking them). Keep the new owner's entry so the next tick or sync
+        // retries them.
+        entry.retryTransition = true;
+      } else {
+        this.lastSent.delete(usingMachineUuid);
+      }
     }
   }
 

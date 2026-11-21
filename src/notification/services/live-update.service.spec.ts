@@ -233,6 +233,32 @@ describe('LiveUpdateService', () => {
       expect(sent()[0][0]).toBe('user-2');
     });
 
+    it('does not restore the old owner when the send to the new owner fails', async () => {
+      await sync('RUNNING', 'user-1');
+      fcmService.sendLiveUpdateToUser.mockResolvedValueOnce({
+        sent: 0,
+        failed: 1,
+      });
+      await sync('RUNNING', 'user-2', 20, later(10));
+      fcmService.sendLiveUpdateToUser.mockClear();
+      await service.tick(later(300));
+      expect(sent()).toHaveLength(1);
+      expect(sent()[0][0]).toBe('user-2');
+    });
+
+    it('resends the transition to the new owner on the next sync after a failure', async () => {
+      await sync('RUNNING', 'user-1');
+      fcmService.sendLiveUpdateToUser.mockResolvedValueOnce({
+        sent: 0,
+        failed: 1,
+      });
+      await sync('RUNNING', 'user-2', 20, later(10));
+      fcmService.sendLiveUpdateToUser.mockClear();
+      await sync('RUNNING', 'user-2', 20, later(20));
+      expect(sent()).toHaveLength(1);
+      expect(sent()[0][0]).toBe('user-2');
+    });
+
     it('does not tick without a known finish time', async () => {
       await sync('DETECTING', 'user-1', null);
       await service.tick(later(600));

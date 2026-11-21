@@ -107,7 +107,6 @@ FCM에서는 `notification`(title/body) + data map으로 전달하며 data 값�
 | 시점 | 이벤트 | 비고 |
 | --- | --- | --- |
 | ThinQ 건조기 진행 중 상태/남은 시간 변경 | `update` | 상태가 바뀌면 즉시(priority 10), 종료 예상 시각이 2분 이상 어긋났을 때만(priority 5, 세션당 60초 간격 제한). 전송이 실패하면 다음 동기화에서 같은 내용을 다시 보낸다. 카운트다운 자체는 앱이 `Text(timerInterval:)`로 그린다 |
-| 위 메시지(전이/보정/tick) 중 마지막 발송 후 **tick 간격**이 지났고 `endsAt`을 알 때(`RUNNING`/`COOLING`/`PAUSE`, 아직 `endsAt` 전) | tick. 상태 전이·보정 발송 시점부터 타이머가 다시 시작돼 직후 중복 발송이 없다. 일부 기기 전송 실패 시 다음 tick에서 다시 시도한다 |
 | 세션 종료(`finishUsingMachine`) | `update` (`state: END`) | **`end`를 보내지 않는다.** 완료 후에도 Dynamic Island/잠금화면에 남는다. 토큰도 유지. `notifyOnCompletion`과 무관 |
 | 다른 사용자가 완료 확인 후 같은 기계를 재등록 | `update` (`state: END`) | 이전 사용자는 여전히 수거해야 하므로 `end`를 보내지 않고 "완료"로 남긴다. 같은 기계에 새 세션이 시작돼도 이전 사용자의 activity에는 아무것도 보내지 않는다 |
 | 사용자가 `DELETE /machine/:uuid/register`로 기계 추적을 해제 | `end` | 그 사용자의 해당 기계 activity(진행 중·완료 상태 모두)를 즉시 제거하고 토큰 삭제. 진행 중 세션이 없어 404를 반환하는 경우에도 정리한다. APNs 전송이 실패한 토큰은 남겨 두었다가, 이후 세션의 update/완료 시점에 `end`만 다시 시도한다(일반 update는 보내지 않는다) |
@@ -190,4 +189,4 @@ tick은 `endsAt`을 모르는 상태(`DETECTING` 등), `END`/`ERROR`, 세탁기,
 - dedupe/tick 상태는 **메모리**다. 서버 재시작 후에는 전이 메시지가 한 번 더 갈 수 있고, 세션이 다음 ThinQ 동기화(MQTT 이벤트 또는 REST 보정)로 다시 등록될 때까지 tick이 멈춘다.
 - 다중 인스턴스 간 조정(락/리더 선출)은 없다. ThinQ 동기화·MQTT·기존 Live Update 전이 발송과 마찬가지로 단일 인스턴스를 전제로 하며, 여러 인스턴스를 띄우면 인스턴스 수만큼 tick이 중복 발송된다.
 
- 무효 토큰(`UNREGISTERED` 등)은 일반 푸시와 같은 방식으로 구독을 삭제한다.
+무효 토큰(`UNREGISTERED` 등)은 일반 푸시와 같은 방식으로 구독을 삭제한다.
