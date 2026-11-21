@@ -26,7 +26,6 @@ describe('LiveActivityService', () => {
     deleteUserToken: jest.fn(),
     deleteTokens: jest.fn(),
     getTokensByUsingMachine: jest.fn(),
-    getTokensOfOtherSessions: jest.fn(),
     getUserTokensOnMachine: jest.fn(),
   };
   const apns = {
@@ -147,26 +146,6 @@ describe('LiveActivityService', () => {
       repository.getUserTokensOnMachine.mockResolvedValue([]);
       await service.endForUserOnMachine('user-1', 'machine-1', now);
       expect(apns.sendLiveActivityEnd).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('endStaleForMachine', () => {
-    it('ends finished sessions of the machine once per new session', async () => {
-      repository.getTokensOfOtherSessions.mockResolvedValue(tokens);
-      await service.endStaleForMachine('machine-1', 'usage-2', now);
-      await service.endStaleForMachine('machine-1', 'usage-2', now);
-
-      expect(repository.getTokensOfOtherSessions).toHaveBeenCalledTimes(1);
-      expect(repository.getTokensOfOtherSessions).toHaveBeenCalledWith(
-        'machine-1',
-        'usage-2',
-      );
-      expect(apns.sendLiveActivityEnd).toHaveBeenCalledTimes(2);
-      expect(repository.deleteTokens).toHaveBeenCalledWith(['aa', 'bb']);
-
-      repository.getTokensOfOtherSessions.mockResolvedValue([]);
-      await service.endStaleForMachine('machine-1', 'usage-3', now);
-      expect(repository.getTokensOfOtherSessions).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -34,8 +34,6 @@ export class LiveActivityService {
   private readonly logger = new Logger(LiveActivityService.name);
   /** Last progress update per session; lost on restart (one extra update). */
   private readonly lastSent = new Map<string, LastSent>();
-  /** Newest session of a machine whose predecessors were already cleaned up. */
-  private readonly cleanedSessionByMachine = new Map<string, string>();
 
   constructor(
     private readonly liveActivityRepository: LiveActivityRepository,
@@ -186,28 +184,6 @@ export class LiveActivityService {
       machineUuid,
     );
     await this.endAndForget(tokens, now);
-  }
-
-  /**
-   * A new session started on the machine: finished sessions still showing
-   * "done" are obsolete, so end them. Remembered per machine because this is
-   * called on every ThinQ event of a running dryer.
-   */
-  async endStaleForMachine(
-    machineUuid: string,
-    currentUsingMachineUuid: string,
-    now: Date = new Date(),
-  ): Promise<void> {
-    if (
-      this.cleanedSessionByMachine.get(machineUuid) === currentUsingMachineUuid
-    )
-      return;
-    const tokens = await this.liveActivityRepository.getTokensOfOtherSessions(
-      machineUuid,
-      currentUsingMachineUuid,
-    );
-    await this.endAndForget(tokens, now);
-    this.cleanedSessionByMachine.set(machineUuid, currentUsingMachineUuid);
   }
 
   private async endAndForget(

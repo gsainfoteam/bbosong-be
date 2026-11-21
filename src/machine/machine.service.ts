@@ -603,9 +603,11 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         machineUuid,
         usageUuid,
       );
+    // The previous user still has to pick up their laundry: show it as done
+    // and leave the activity for them to dismiss.
     await this.dispatchNotification(
-      () => this.liveActivityService.endForUsingMachine(previous.uuid),
-      `Live Activity end for machine ${machineUuid}`,
+      () => this.liveActivityService.completeForUsingMachine(previous.uuid),
+      `Live Activity completion for machine ${machineUuid}`,
     );
     if (previous.userUuid) {
       await this.dispatchNotification(
@@ -776,21 +778,11 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     userUuid?: string,
     notifyOnCompletion = true,
   ): Promise<UsingMachine> {
-    const usingMachine = await this.usingMachineRepository.createUsingMachine(
+    return await this.usingMachineRepository.createUsingMachine(
       machineUuid,
       userUuid,
       notifyOnCompletion,
     );
-    // Live Activities still showing "done" for earlier sessions are obsolete.
-    await this.dispatchNotification(
-      () =>
-        this.liveActivityService.endStaleForMachine(
-          machineUuid,
-          usingMachine.uuid,
-        ),
-      `stale Live Activity cleanup for machine ${machineUuid}`,
-    );
-    return usingMachine;
   }
 
   async finishUsingMachine(machineUuid: string): Promise<void> {

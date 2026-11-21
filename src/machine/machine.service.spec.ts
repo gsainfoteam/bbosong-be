@@ -86,7 +86,6 @@ describe('MachineService access and registration', () => {
   const liveActivityService = {
     completeForUsingMachine: jest.fn(),
     endForUsingMachine: jest.fn(),
-    endStaleForMachine: jest.fn(),
     endForUserOnMachine: jest.fn(),
     syncRunning: jest.fn(),
     registerCompletedToken: jest.fn(),
@@ -446,7 +445,7 @@ describe('MachineService access and registration', () => {
     expect(liveActivityService.completeForUsingMachine).not.toHaveBeenCalled();
   });
 
-  it("ends the previous user's Live Activity when another user confirms completion", async () => {
+  it("shows done, without ending, on the previous user's Live Activity when another user confirms completion", async () => {
     usingMachineRepository.confirmCompletedAndRegister.mockResolvedValue({
       uuid: 'previous-usage',
       userUuid: null,
@@ -458,9 +457,10 @@ describe('MachineService access and registration', () => {
       Gender.MALE,
       'previous-usage',
     );
-    expect(liveActivityService.endForUsingMachine).toHaveBeenCalledWith(
+    expect(liveActivityService.completeForUsingMachine).toHaveBeenCalledWith(
       'previous-usage',
     );
+    expect(liveActivityService.endForUsingMachine).not.toHaveBeenCalled();
   });
 
   it("ends the user's Live Activities when they unlink from the machine", async () => {
@@ -478,27 +478,6 @@ describe('MachineService access and registration', () => {
       service.unlinkUserFromMachine(userUuid, machineUuid),
     ).rejects.toThrow(NotFoundException);
     expect(liveActivityService.endForUserOnMachine).not.toHaveBeenCalled();
-  });
-
-  it('ends obsolete Live Activities when a session starts', async () => {
-    usingMachineRepository.createUsingMachine.mockResolvedValue({
-      uuid: 'usage-2',
-    });
-    await service.startUsingMachine(machineUuid);
-    expect(liveActivityService.endStaleForMachine).toHaveBeenCalledWith(
-      machineUuid,
-      'usage-2',
-    );
-  });
-
-  it('still starts the session when the stale cleanup fails', async () => {
-    usingMachineRepository.createUsingMachine.mockResolvedValue({
-      uuid: 'usage-2',
-    });
-    liveActivityService.endStaleForMachine.mockRejectedValue(new Error('x'));
-    await expect(service.startUsingMachine(machineUuid)).resolves.toEqual({
-      uuid: 'usage-2',
-    });
   });
 
   describe('Live Activity registration', () => {
