@@ -1,6 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../config/bbosong-config.service';
 import { isAxiosError } from 'axios';
 import { randomUUID } from 'node:crypto';
 import { firstValueFrom } from 'rxjs';
@@ -53,19 +53,14 @@ export class ThinqService {
 
   constructor(
     private readonly httpService: HttpService,
-    configService: ConfigService,
+    configService: BbosongConfigService,
   ) {
-    this.token = configService.get<string>('THINQ_PAT')?.trim();
-    this.country = configService.get<string>('THINQ_COUNTRY_CODE')?.trim();
-    this.clientId = configService.get<string>('THINQ_CLIENT_ID')?.trim();
-    this.apiKey = configService.get<string>('THINQ_API_KEY')?.trim();
-    this.baseUrl = configService.get<string>(
-      'THINQ_BASE_URL',
-      THINQ_API_SERVERS[0],
-    );
-    const interval = Number(
-      configService.get('THINQ_POLL_INTERVAL_SECONDS', 600),
-    );
+    this.token = configService.thinqPat?.trim();
+    this.country = configService.thinqCountryCode?.trim();
+    this.clientId = configService.thinqClientId?.trim();
+    this.apiKey = configService.thinqApiKey?.trim();
+    this.baseUrl = configService.thinqBaseUrl ?? THINQ_API_SERVERS[0];
+    const interval = Number(configService.thinqPollIntervalSeconds ?? 600);
     // Reconcile-only cadence; MQTT carries live updates. OpenAPI has no numeric quota.
     this.pollIntervalMs =
       Number.isFinite(interval) && interval >= 300 && interval <= 86_400

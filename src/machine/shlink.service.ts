@@ -6,7 +6,7 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../config/bbosong-config.service';
 
 @Injectable()
 export class ShlinkService {
@@ -16,14 +16,12 @@ export class ShlinkService {
   private readonly shortCodeLength?: number;
   private readonly tag?: string;
 
-  constructor(configService: ConfigService) {
-    const baseUrl = configService.get<string>('SHLINK_URL');
-    const apiKey = configService.get<string>('SHLINK_API_KEY');
-    this.domain = configService.get<string>('SHLINK_DOMAIN');
-    this.tag = configService.get<string>('SHLINK_TAG');
-    const shortCodeLength = configService.get<string>(
-      'SHLINK_SHORT_CODE_LENGTH',
-    );
+  constructor(configService: BbosongConfigService) {
+    const baseUrl = configService.shlinkUrl;
+    const apiKey = configService.shlinkApiKey;
+    this.domain = configService.shlinkDomain;
+    this.tag = configService.shlinkTag;
+    const shortCodeLength = configService.shlinkShortCodeLength;
     this.shortCodeLength = shortCodeLength
       ? Number.parseInt(shortCodeLength)
       : undefined;

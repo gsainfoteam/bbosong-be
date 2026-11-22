@@ -1,6 +1,6 @@
 import { Loggable } from '@lib/logger';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { MachineType } from 'generated/prisma/client';
 import {
   LiveActivityContentState,
@@ -68,11 +68,9 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly fcmService: FcmService,
-    configService: ConfigService,
+    configService: BbosongConfigService,
   ) {
-    const raw = configService.get<string | number>(
-      'LIVE_UPDATE_TICK_INTERVAL_SECONDS',
-    );
+    const raw = configService.liveUpdateTickIntervalSeconds;
     const seconds =
       raw === undefined || raw === null || raw === '' ? NaN : Number(raw);
     if (seconds === 0) this.tickIntervalMs = 0;

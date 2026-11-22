@@ -348,7 +348,7 @@ describe('daily laundry room notification stats', () => {
       {} as never,
       {} as never,
       {} as never,
-      { get: jest.fn().mockReturnValue(`${excluded}, not-a-uuid`) } as never,
+      { statsExcludedUserIds: `${excluded}, not-a-uuid` } as never,
     );
 
     await withConfig.getDailyLaundryRoomNotificationStats(

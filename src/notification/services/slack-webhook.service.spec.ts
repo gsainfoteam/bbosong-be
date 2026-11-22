@@ -7,7 +7,7 @@ describe('SlackWebhookService', () => {
     global.fetch = fetchMock as never;
   });
   const make = (url?: string) =>
-    new SlackWebhookService({ get: () => url } as never);
+    new SlackWebhookService({ slackWebhookUrl: url } as never);
 
   it('does nothing when SLACK_WEBHOOK_URL is unset', async () => {
     await make().send('hi');

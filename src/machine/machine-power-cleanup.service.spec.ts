@@ -1,5 +1,6 @@
 import type { MachineRepository } from '@lib/database/repositories/machine.repository';
 import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../config/bbosong-config.service';
 import { MachinePowerCleanupService } from './machine-power-cleanup.service';
 
 jest.mock('@nestjs/schedule', () => ({ Cron: () => () => undefined }));
@@ -10,9 +11,9 @@ describe('MachinePowerCleanupService', () => {
     const deleteMachinePowerBefore = jest.fn().mockResolvedValue(3);
     const service = new MachinePowerCleanupService(
       { deleteMachinePowerBefore } as unknown as MachineRepository,
-      {
+      new BbosongConfigService({
         get: (_: string, d: unknown) => days ?? d,
-      } as unknown as ConfigService,
+      } as unknown as ConfigService),
     );
     return { service, deleteMachinePowerBefore };
   };

@@ -29,7 +29,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../config/bbosong-config.service';
 import {
   Gender,
   Machine,
@@ -81,7 +81,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     private readonly notificationService: NotificationService,
     private readonly matterConnectionService: MatterConnectionService,
     private readonly shlinkService: ShlinkService,
-    private readonly configService: ConfigService,
+    private readonly configService: BbosongConfigService,
     private readonly liveActivityService: LiveActivityService,
     private readonly liveUpdateService: LiveUpdateService,
   ) {}
@@ -323,10 +323,9 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const machineRegisterUrl = this.configService.get<string>(
-      'MACHINE_REGISTER_URL',
-      'https://bbosong.gistory.me/machine-register',
-    );
+    const machineRegisterUrl =
+      this.configService.machineRegisterUrl ??
+      'https://bbosong.gistory.me/machine-register';
     const longUrl = `${machineRegisterUrl.replace(/\/+$/, '')}/${machine.uuid}`;
     const shortUrl = await this.shlinkService.ensureShortUrl(longUrl);
     return await this.machineRepository.updateMachineShortUrl(

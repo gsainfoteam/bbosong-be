@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import * as webpush from 'web-push';
 import { WebPushService } from './web-push.service';
@@ -46,7 +47,7 @@ describe('Web push activation timestamps', () => {
       headers: {},
     });
     service = new WebPushService(
-      new ConfigService(),
+      new BbosongConfigService(new ConfigService()),
       repository as unknown as NotificationRepository,
     );
   });

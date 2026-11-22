@@ -1,23 +1,22 @@
 import { ValidationPipe } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import expressBasicAuth from 'express-basic-auth';
 import { AppModule } from './app.module';
+import { BbosongConfigService } from './config/bbosong-config.service';
 import { MetricsInterceptor } from '@gsainfoteam/nest-observability';
 
 export const makeApp = async () => {
   const app = await NestFactory.create(AppModule);
-  const configService = app.get(ConfigService);
+  const configService = app.get(BbosongConfigService);
 
   app.use(
     ['/api', '/api-json'],
     expressBasicAuth({
       challenge: true,
       users: {
-        [configService.getOrThrow<string>('SWAGGER_USER')]:
-          configService.getOrThrow<string>('SWAGGER_PASSWORD'),
+        [configService.swaggerUser]: configService.swaggerPassword,
       },
     }),
   );
@@ -25,8 +24,7 @@ export const makeApp = async () => {
   app.use(cookieParser());
 
   const corsWhitelist = new Set(
-    configService
-      .getOrThrow<string>('CORS_ORIGINS')
+    configService.corsOrigins
       .split(',')
       .map((origin) => origin.trim())
       .filter((origin) => origin !== ''),
@@ -76,9 +74,8 @@ export const makeApp = async () => {
         bearerFormat: 'token',
         flows: {
           authorizationCode: {
-            authorizationUrl:
-              configService.getOrThrow<string>('SWAGGER_AUTH_URL'),
-            tokenUrl: configService.getOrThrow<string>('SWAGGER_TOKEN_URL'),
+            authorizationUrl: configService.swaggerAuthUrl,
+            tokenUrl: configService.swaggerTokenUrl,
             scopes: {
               email: 'email',
               student_id: 'student_id',
@@ -114,10 +111,10 @@ export const makeApp = async () => {
     swaggerOptions: {
       persistAuthorization: process.env.NODE_ENV === 'development',
       displayRequestDuration: true,
-      oauth2RedirectUrl: `${configService.getOrThrow<string>('API_URL')}/api/oauth2-redirect.html`,
+      oauth2RedirectUrl: `${configService.apiUrl}/api/oauth2-redirect.html`,
       initOAuth: {
         usePkceWithAuthorizationCodeGrant: true,
-        clientId: configService.getOrThrow<string>('CLIENT_ID'),
+        clientId: configService.clientId,
       },
     },
   });

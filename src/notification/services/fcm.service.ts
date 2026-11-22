@@ -1,6 +1,6 @@
 import { Loggable } from '@lib/logger';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import { App, cert, getApps, initializeApp } from 'firebase-admin/app';
 import {
@@ -28,7 +28,7 @@ export class FcmService implements OnModuleInit {
   private messaging: Messaging | null = null;
 
   constructor(
-    private readonly configService: ConfigService,
+    private readonly configService: BbosongConfigService,
     private readonly notificationRepository: NotificationRepository,
   ) {}
 
@@ -37,7 +37,7 @@ export class FcmService implements OnModuleInit {
    * (Web Push only); native devices are simply skipped there.
    */
   onModuleInit() {
-    const raw = this.configService.get<string>('FIREBASE_SERVICE_ACCOUNT_JSON');
+    const raw = this.configService.firebaseServiceAccountJson;
     if (!raw?.trim()) {
       this.logger.warn(
         'FIREBASE_SERVICE_ACCOUNT_JSON is not set; FCM push to native devices is disabled.',
@@ -91,7 +91,7 @@ export class FcmService implements OnModuleInit {
         priority: 'high',
         notification: {
           channelId:
-            this.configService.get<string>('FCM_ANDROID_CHANNEL_ID') ||
+            this.configService.fcmAndroidChannelId ||
             DEFAULT_ANDROID_CHANNEL_ID,
           sound: 'default',
         },

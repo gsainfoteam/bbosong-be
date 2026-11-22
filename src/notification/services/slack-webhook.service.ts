@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { formatError } from '../../common/utils/format-error.util';
 
 const SLACK_TIMEOUT_MS = 5_000;
@@ -12,10 +12,10 @@ const SLACK_TIMEOUT_MS = 5_000;
 export class SlackWebhookService {
   private readonly logger = new Logger(SlackWebhookService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: BbosongConfigService) {}
 
   async send(text: string): Promise<void> {
-    const url = this.configService.get<string>('SLACK_WEBHOOK_URL')?.trim();
+    const url = this.configService.slackWebhookUrl?.trim();
     if (!url) return;
     try {
       const res = await fetch(url, {

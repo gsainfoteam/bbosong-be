@@ -12,14 +12,10 @@ describe('LiveUpdateService', () => {
   );
   const now = new Date('2026-11-21T00:10:00Z');
   let service: LiveUpdateService;
-  const configGet = jest.fn();
   const create = (tickSeconds?: string) => {
-    configGet.mockReturnValue(tickSeconds);
     return new LiveUpdateService(
       fcmService as never,
-      {
-        get: configGet,
-      } as never,
+      { liveUpdateTickIntervalSeconds: tickSeconds } as never,
     );
   };
 
