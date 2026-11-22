@@ -58,6 +58,7 @@ describe('UsingMachineRepository.countDailySessionsByRegistration', () => {
       null,
       null,
       null,
+      null,
     ]);
     expect(rows).toEqual([
       { date: '2026-11-10', registeredCount: 1, unregisteredCount: 1 },
@@ -90,10 +91,11 @@ describe('UsingMachineRepository.countDailySessionsByRegistration', () => {
     expect(sql).toContain('m.location = ');
     expect(sql).toContain('m.gender = ');
     expect(sql).toContain('m.type = ');
-    expect(values.slice(-3)).toEqual([
+    expect(values.slice(-4)).toEqual([
       Location.B,
       Gender.FEMALE,
       MachineType.DRYER,
+      null,
     ]);
   });
 
@@ -109,7 +111,7 @@ describe('UsingMachineRepository.countDailySessionsByRegistration', () => {
       TemplateStringsArray,
       ...unknown[],
     ];
-    expect(values.slice(-3)).toEqual([null, null, null]);
+    expect(values.slice(-4)).toEqual([null, null, null, null]);
   });
 });
 

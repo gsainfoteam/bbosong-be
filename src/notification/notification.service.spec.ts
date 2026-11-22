@@ -336,7 +336,29 @@ describe('daily laundry room notification stats', () => {
       '2026-01-01',
       '2026-03-31',
     );
-    expect(countDaily).toHaveBeenCalledWith('2026-01-01', '2026-03-31');
+    expect(countDaily).toHaveBeenCalledWith('2026-01-01', '2026-03-31', []);
+  });
+
+  it('forwards configured excluded user UUIDs to the repository', async () => {
+    const excluded = '11111111-1111-4111-8111-111111111111';
+    const countExcluded = jest.fn().mockResolvedValue([]);
+    const withConfig = new NotificationService(
+      { countDailyLaundryRoomStats: countExcluded } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { get: jest.fn().mockReturnValue(`${excluded}, not-a-uuid`) } as never,
+    );
+
+    await withConfig.getDailyLaundryRoomNotificationStats(
+      '2026-11-01',
+      '2026-11-02',
+    );
+
+    expect(countExcluded).toHaveBeenCalledWith('2026-11-01', '2026-11-02', [
+      excluded,
+    ]);
   });
 });
 

@@ -288,7 +288,12 @@ export class NotificationRepository {
   }
 
   /** Per-KST-day subscription/notification counts for `[from, to]`. */
-  async countDailyLaundryRoomStats(from: string, to: string) {
+  async countDailyLaundryRoomStats(
+    from: string,
+    to: string,
+    excludeUserUuids: string[] = [],
+  ) {
+    const excl = excludeUserUuids.length ? excludeUserUuids : null;
     return this.run(
       'countDailyLaundryRoomStats',
       this.databaseService.$queryRaw<
@@ -311,6 +316,7 @@ export class NotificationRepository {
           FROM laundry_room_subscription_log
           WHERE subscribed_at >= ((${from}::date)::timestamp AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'UTC'
             AND subscribed_at < ((${to}::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'UTC'
+            AND (user_uuid <> ALL(COALESCE(${excl}::uuid[], '{}')))
           GROUP BY 1
         ),
         notif AS (
@@ -321,6 +327,7 @@ export class NotificationRepository {
           FROM laundry_room_notification_log
           WHERE notified_at >= ((${from}::date)::timestamp AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'UTC'
             AND notified_at < ((${to}::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'UTC'
+            AND (user_uuid <> ALL(COALESCE(${excl}::uuid[], '{}')))
           GROUP BY 1
         )
         SELECT

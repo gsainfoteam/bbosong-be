@@ -47,6 +47,8 @@ export interface DailySessionFilter {
   location?: Location;
   gender?: Gender;
   type?: MachineType;
+  // Sessions of these users are left out; anonymous (null user) sessions stay.
+  excludeUserUuids?: string[];
 }
 
 @Loggable()
@@ -399,6 +401,9 @@ export class UsingMachineRepository {
       unregisteredCount: number;
     }>
   > {
+    const excl = filter.excludeUserUuids?.length
+      ? filter.excludeUserUuids
+      : null;
     const rows = await this.databaseService.$queryRaw<
       Array<{
         date: string;
@@ -428,6 +433,7 @@ export class UsingMachineRepository {
           AND m.location = COALESCE(${filter.location ?? null}::location, m.location)
           AND m.gender = COALESCE(${filter.gender ?? null}::gender, m.gender)
           AND m.type = COALESCE(${filter.type ?? null}::machine_type, m.type)
+          AND (us.user_uuid IS NULL OR us.user_uuid <> ALL(COALESCE(${excl}::uuid[], '{}')))
         GROUP BY 1
       )
       SELECT
@@ -472,6 +478,9 @@ export class UsingMachineRepository {
       ? Prisma.sql`GROUP BY ${ordinals} ORDER BY ${ordinals}`
       : Prisma.empty;
 
+    const excl = filter.excludeUserUuids?.length
+      ? filter.excludeUserUuids
+      : null;
     const rows = await this.databaseService.$queryRaw<
       Array<Record<string, string | number | bigint>>
     >`
@@ -486,6 +495,7 @@ export class UsingMachineRepository {
         AND m.location = COALESCE(${filter.location ?? null}::location, m.location)
         AND m.gender = COALESCE(${filter.gender ?? null}::gender, m.gender)
         AND m.type = COALESCE(${filter.type ?? null}::machine_type, m.type)
+        AND (us.user_uuid IS NULL OR us.user_uuid <> ALL(COALESCE(${excl}::uuid[], '{}')))
       ${grouping}
     `.catch((error) => {
       this.logger.error(`countUsageStats error: ${String(error)}`);
