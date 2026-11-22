@@ -1,5 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../config/bbosong-config.service';
 import { ServiceUnavailableException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { AxiosError, AxiosHeaders } from 'axios';
@@ -16,11 +17,7 @@ describe('ThinQ Connect HTTP client', () => {
   };
   const http = { request: jest.fn() };
   function config(values: Record<string, unknown>) {
-    return {
-      get: jest.fn(
-        (key: string, fallback?: unknown) => values[key] ?? fallback,
-      ),
-    } as unknown as ConfigService;
+    return new BbosongConfigService(new ConfigService(values));
   }
   function response(value: unknown) {
     return of({ data: { response: value } });
@@ -195,7 +192,9 @@ describe('ThinQ Connect HTTP client', () => {
     const module = await Test.createTestingModule({
       imports: [ThinqModule],
     })
-      .useMocker((token) => (token === ConfigService ? config({}) : undefined))
+      .useMocker((token) =>
+        token === BbosongConfigService ? config({}) : undefined,
+      )
       .compile();
     await module.init();
     expect(module.get(ThinqService).enabled).toBe(false);

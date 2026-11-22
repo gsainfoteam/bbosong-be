@@ -1,6 +1,6 @@
 import { Loggable } from '@lib/logger';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import { App, cert, getApps, initializeApp } from 'firebase-admin/app';
 import {
@@ -13,7 +13,6 @@ import { formatError } from '../../common/utils/format-error.util';
 import { PushPayload } from '../types/push-payload.type';
 
 const FIREBASE_APP_NAME = 'bbosong-fcm';
-const DEFAULT_ANDROID_CHANNEL_ID = 'default';
 
 /** FCM error codes that mean the registration token can never work again. */
 const DEAD_TOKEN_CODES = new Set([
@@ -28,7 +27,7 @@ export class FcmService implements OnModuleInit {
   private messaging: Messaging | null = null;
 
   constructor(
-    private readonly configService: ConfigService,
+    private readonly configService: BbosongConfigService,
     private readonly notificationRepository: NotificationRepository,
   ) {}
 
@@ -37,7 +36,7 @@ export class FcmService implements OnModuleInit {
    * (Web Push only); native devices are simply skipped there.
    */
   onModuleInit() {
-    const raw = this.configService.get<string>('FIREBASE_SERVICE_ACCOUNT_JSON');
+    const raw = this.configService.firebaseServiceAccountJson;
     if (!raw?.trim()) {
       this.logger.warn(
         'FIREBASE_SERVICE_ACCOUNT_JSON is not set; FCM push to native devices is disabled.',
@@ -90,9 +89,7 @@ export class FcmService implements OnModuleInit {
         // Time-sensitive laundry alerts should wake the device during Doze.
         priority: 'high',
         notification: {
-          channelId:
-            this.configService.get<string>('FCM_ANDROID_CHANNEL_ID') ||
-            DEFAULT_ANDROID_CHANNEL_ID,
+          channelId: this.configService.fcmAndroidChannelId,
           sound: 'default',
         },
       },

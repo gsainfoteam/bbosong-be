@@ -3,19 +3,19 @@ import { PassportStrategy } from '@nestjs/passport';
 import { JwtPayload } from 'jsonwebtoken';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { AuthService } from '../auth.service';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 
 @Injectable()
 export class UserStrategy extends PassportStrategy(Strategy, 'user') {
   constructor(
     private readonly authService: AuthService,
-    private readonly configService: ConfigService,
+    private readonly configService: BbosongConfigService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: configService.getOrThrow<string>('USER_JWT_SECRET'),
-      issuer: configService.getOrThrow<string>('USER_JWT_ISSUER'),
-      audience: configService.getOrThrow<string>('USER_JWT_AUDIENCE'),
+      secretOrKey: configService.userJwtSecret,
+      issuer: configService.userJwtIssuer,
+      audience: configService.userJwtAudience,
     });
   }
 

@@ -1,6 +1,6 @@
 import { Loggable } from '@lib/logger';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import * as webpush from 'web-push';
 import { formatError } from '../../common/utils/format-error.util';
@@ -15,15 +15,14 @@ export class WebPushService implements OnModuleInit {
   private readonly logger = new Logger(WebPushService.name);
 
   constructor(
-    private readonly configService: ConfigService,
+    private readonly configService: BbosongConfigService,
     private readonly notificationRepository: NotificationRepository,
   ) {}
 
   onModuleInit() {
-    const subject = this.configService.getOrThrow<string>('VAPID_SUBJECT');
-    const publicKey = this.configService.getOrThrow<string>('VAPID_PUBLIC_KEY');
-    const privateKey =
-      this.configService.getOrThrow<string>('VAPID_PRIVATE_KEY');
+    const subject = this.configService.vapidSubject;
+    const publicKey = this.configService.vapidPublicKey;
+    const privateKey = this.configService.vapidPrivateKey;
 
     webpush.setVapidDetails(subject, publicKey, privateKey);
   }

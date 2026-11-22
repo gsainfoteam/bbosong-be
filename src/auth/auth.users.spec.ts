@@ -1,6 +1,7 @@
 import { INestApplication, Injectable } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../config/bbosong-config.service';
 import { PassportModule, PassportStrategy } from '@nestjs/passport';
 import { Request } from 'express';
 import { Strategy } from 'passport';
@@ -87,16 +88,18 @@ describe('GET /auth/users', () => {
     const args = [
       {},
       {},
-      new ConfigService({
-        USER_JWT_SECRET: 'test',
-        USER_JWT_EXPIRE: '15m',
-        USER_JWT_AUDIENCE: 'test',
-        USER_JWT_ISSUER: 'test',
-        USER_REFRESH_TOKEN_EXPIRE: '7d',
-        REFRESH_TOKEN_HMAC_SECRET: 'test',
-        POLICY_API_URL: 'https://example.com/policy',
-        SERVICE_NAME_FOR_POLICY_VERSION: 'test',
-      }),
+      new BbosongConfigService(
+        new ConfigService({
+          USER_JWT_SECRET: 'test',
+          USER_JWT_EXPIRE: '15m',
+          USER_JWT_AUDIENCE: 'test',
+          USER_JWT_ISSUER: 'test',
+          USER_REFRESH_TOKEN_EXPIRE: '7d',
+          REFRESH_TOKEN_HMAC_SECRET: 'test',
+          POLICY_API_URL: 'https://example.com/policy',
+          SERVICE_NAME_FOR_POLICY_VERSION: 'test',
+        }),
+      ),
       {},
       {},
       { findUsersWithPushSubscriptions },

@@ -1,6 +1,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../config/bbosong-config.service';
 import { of } from 'rxjs';
 import { Response } from 'express';
 import { Gender, Role, User } from 'generated/prisma/client';
@@ -92,16 +93,18 @@ describe('Independent user sessions', () => {
           ),
       ),
     };
-    const config = new ConfigService({
-      USER_JWT_SECRET: 'test-jwt-secret',
-      USER_JWT_EXPIRE: '15m',
-      USER_JWT_AUDIENCE: 'test',
-      USER_JWT_ISSUER: 'test',
-      USER_REFRESH_TOKEN_EXPIRE: '7d',
-      REFRESH_TOKEN_HMAC_SECRET: 'test-hmac-secret',
-      POLICY_API_URL: 'https://example.com/policy',
-      SERVICE_NAME_FOR_POLICY_VERSION: 'test',
-    });
+    const config = new BbosongConfigService(
+      new ConfigService({
+        USER_JWT_SECRET: 'test-jwt-secret',
+        USER_JWT_EXPIRE: '15m',
+        USER_JWT_AUDIENCE: 'test',
+        USER_JWT_ISSUER: 'test',
+        USER_REFRESH_TOKEN_EXPIRE: '7d',
+        REFRESH_TOKEN_HMAC_SECRET: 'test-hmac-secret',
+        POLICY_API_URL: 'https://example.com/policy',
+        SERVICE_NAME_FOR_POLICY_VERSION: 'test',
+      }),
+    );
     const tx = {};
     const args = [
       { getUserInfo: jest.fn().mockResolvedValue(user) },

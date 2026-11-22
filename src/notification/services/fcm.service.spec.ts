@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import { Message } from 'firebase-admin/messaging';
 import { FcmService } from './fcm.service';
@@ -48,7 +49,12 @@ describe('FcmService', () => {
 
   const create = (env: Record<string, string> = {}) => {
     const service = new FcmService(
-      new ConfigService({ FIREBASE_SERVICE_ACCOUNT_JSON: credentials, ...env }),
+      new BbosongConfigService(
+        new ConfigService({
+          FIREBASE_SERVICE_ACCOUNT_JSON: credentials,
+          ...env,
+        }),
+      ),
       repository as unknown as NotificationRepository,
     );
     service.onModuleInit();
@@ -142,7 +148,7 @@ describe('FcmService', () => {
 
   it('is a no-op without credentials and rejects malformed credentials', async () => {
     const service = new FcmService(
-      new ConfigService({}),
+      new BbosongConfigService(new ConfigService({})),
       repository as unknown as NotificationRepository,
     );
     service.onModuleInit();
@@ -150,7 +156,9 @@ describe('FcmService', () => {
     expect(repository.getUserNativePushDevices).not.toHaveBeenCalled();
 
     const bad = new FcmService(
-      new ConfigService({ FIREBASE_SERVICE_ACCOUNT_JSON: '{not json' }),
+      new BbosongConfigService(
+        new ConfigService({ FIREBASE_SERVICE_ACCOUNT_JSON: '{not json' }),
+      ),
       repository as unknown as NotificationRepository,
     );
     expect(() => bad.onModuleInit()).toThrow(
@@ -197,7 +205,7 @@ describe('FcmService', () => {
 
     it('does nothing when FCM is disabled', async () => {
       const service = new FcmService(
-        new ConfigService({}),
+        new BbosongConfigService(new ConfigService({})),
         repository as unknown as NotificationRepository,
       );
       service.onModuleInit();

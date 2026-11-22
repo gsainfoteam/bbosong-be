@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../config/bbosong-config.service';
 import { HttpService } from '@nestjs/axios';
 import ms, { StringValue } from 'ms';
 import {
@@ -62,7 +62,7 @@ export class AuthService {
   constructor(
     private readonly infoteamAccountService: InfoteamAccountService,
     private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
+    private readonly configService: BbosongConfigService,
     private readonly databaseService: DatabaseService,
     private readonly httpService: HttpService,
     private readonly userRepository: UserRepository,
@@ -71,24 +71,15 @@ export class AuthService {
     private readonly auditLogService: AuditLogService,
     private readonly notificationService: NotificationService,
   ) {
-    this.userJwtSecret =
-      this.configService.getOrThrow<string>('USER_JWT_SECRET');
-    this.userJwtExpire =
-      this.configService.getOrThrow<StringValue>('USER_JWT_EXPIRE');
-    this.userJwtAudience =
-      this.configService.getOrThrow<string>('USER_JWT_AUDIENCE');
-    this.userJwtIssuer =
-      this.configService.getOrThrow<string>('USER_JWT_ISSUER');
-    this.userRefreshTokenExpire = this.configService.getOrThrow<StringValue>(
-      'USER_REFRESH_TOKEN_EXPIRE',
-    );
-    this.refreshTokenHmacSecret = this.configService.getOrThrow<string>(
-      'REFRESH_TOKEN_HMAC_SECRET',
-    );
-    this.policyApiUrl = this.configService.getOrThrow<string>('POLICY_API_URL');
-    this.ServiceNameForPolicyVersion = this.configService.getOrThrow<string>(
-      'SERVICE_NAME_FOR_POLICY_VERSION',
-    );
+    this.userJwtSecret = this.configService.userJwtSecret;
+    this.userJwtExpire = this.configService.userJwtExpire;
+    this.userJwtAudience = this.configService.userJwtAudience;
+    this.userJwtIssuer = this.configService.userJwtIssuer;
+    this.userRefreshTokenExpire = this.configService.userRefreshTokenExpire;
+    this.refreshTokenHmacSecret = this.configService.refreshTokenHmacSecret;
+    this.policyApiUrl = this.configService.policyApiUrl;
+    this.ServiceNameForPolicyVersion =
+      this.configService.serviceNameForPolicyVersion;
   }
 
   async updateRole(userUuid: string, role: Role) {

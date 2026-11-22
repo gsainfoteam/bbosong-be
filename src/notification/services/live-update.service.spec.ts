@@ -1,3 +1,5 @@
+import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { LiveUpdateService } from './live-update.service';
 import { buildLiveUpdateSession } from '../types/live-update.type';
 
@@ -12,14 +14,12 @@ describe('LiveUpdateService', () => {
   );
   const now = new Date('2026-11-21T00:10:00Z');
   let service: LiveUpdateService;
-  const configGet = jest.fn();
   const create = (tickSeconds?: string) => {
-    configGet.mockReturnValue(tickSeconds);
     return new LiveUpdateService(
       fcmService as never,
-      {
-        get: configGet,
-      } as never,
+      new BbosongConfigService(
+        new ConfigService({ LIVE_UPDATE_TICK_INTERVAL_SECONDS: tickSeconds }),
+      ),
     );
   };
 

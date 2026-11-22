@@ -1,6 +1,6 @@
 import { Loggable } from '@lib/logger';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { KeyObject, createPrivateKey, sign } from 'node:crypto';
 import { LiveActivityEnvironment } from 'generated/prisma/client';
 import { formatError } from '../../common/utils/format-error.util';
@@ -44,7 +44,7 @@ export class ApnsService implements OnModuleInit {
   private jwt: { value: string; issuedAt: number } | null = null;
 
   constructor(
-    private readonly configService: ConfigService,
+    private readonly configService: BbosongConfigService,
     private readonly httpClient: ApnsHttpClient,
   ) {}
 
@@ -53,10 +53,10 @@ export class ApnsService implements OnModuleInit {
    * Live Activity pushes are simply skipped there.
    */
   onModuleInit() {
-    const raw = this.configService.get<string>('APNS_KEY_P8');
-    const keyId = this.configService.get<string>('APNS_KEY_ID');
-    const teamId = this.configService.get<string>('APNS_TEAM_ID');
-    const bundleId = this.configService.get<string>('APNS_BUNDLE_ID');
+    const raw = this.configService.apnsKeyP8;
+    const keyId = this.configService.apnsKeyId;
+    const teamId = this.configService.apnsTeamId;
+    const bundleId = this.configService.apnsBundleId;
     if (!raw?.trim() || !keyId || !teamId || !bundleId) {
       this.logger.warn(
         'APNS_KEY_P8, APNS_KEY_ID, APNS_TEAM_ID or APNS_BUNDLE_ID is not set; Live Activity push is disabled.',

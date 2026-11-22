@@ -15,7 +15,7 @@ import {
 import { WebPushService } from './services/web-push.service';
 import { FcmService } from './services/fcm.service';
 import { SlackWebhookService } from './services/slack-webhook.service';
-import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../config/bbosong-config.service';
 import { getStatsExcludedUserUuids } from '../common/utils/stats-exclusion.util';
 import { PushPayload } from './types/push-payload.type';
 import { RegisterNativePushReqDto } from './dto/req/register-native-push-req.dto';
@@ -34,7 +34,7 @@ export class NotificationService {
     private readonly fcmService: FcmService,
     private readonly machineRepository: MachineRepository,
     private readonly slackWebhookService: SlackWebhookService,
-    private readonly configService?: ConfigService,
+    private readonly configService?: BbosongConfigService,
   ) {}
 
   async registerPush(

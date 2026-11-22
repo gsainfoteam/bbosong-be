@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { generateKeyPairSync, verify } from 'node:crypto';
 import { LiveActivityEnvironment } from '../../../generated/prisma/enums';
 import { buildEndContentState } from '../types/live-activity.type';
@@ -43,7 +44,9 @@ describe('ApnsService', () => {
       ...env,
     };
     const service = new ApnsService(
-      { get: (key: string) => values[key] } as unknown as ConfigService,
+      new BbosongConfigService({
+        get: (key: string) => values[key],
+      } as unknown as ConfigService),
       { post } as never,
     );
     service.onModuleInit();
