@@ -112,7 +112,7 @@ describe('MachineService access and registration', () => {
       notificationService as never,
       {} as never,
       {} as never,
-      {} as never,
+      { get: jest.fn() } as never,
       liveActivityService as never,
       liveUpdateService as never,
     );
@@ -1134,7 +1134,9 @@ describe('MachineService access and registration', () => {
       ).resolves.toEqual(rows);
       expect(
         usingMachineRepository.countDailySessionsByRegistration,
-      ).toHaveBeenCalledWith('2026-11-10', '2026-11-10', {});
+      ).toHaveBeenCalledWith('2026-11-10', '2026-11-10', {
+        excludeUserUuids: [],
+      });
     });
 
     it('forwards location, gender and type filters to the repository', async () => {
@@ -1154,6 +1156,7 @@ describe('MachineService access and registration', () => {
         location: Location.A,
         gender: Gender.MALE,
         type: MachineType.WASHER,
+        excludeUserUuids: [],
       });
     });
   });
@@ -1174,7 +1177,7 @@ describe('MachineService access and registration', () => {
         '2026-11-01',
         '2026-11-10',
         ['weekday', 'hour'],
-        { location: Location.A },
+        { location: Location.A, excludeUserUuids: [] },
       );
     });
   });

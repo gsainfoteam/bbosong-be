@@ -46,6 +46,7 @@ import {
 } from './dto/req/create-machine-req.dto';
 import { UpdateMachineReqDto } from './dto/req/update-machine-req.dto';
 import { ShlinkService } from './shlink.service';
+import { withStatsExclusion } from '../common/utils/stats-exclusion.util';
 import type { ThinqDryerState } from '../thinq/thinq.service';
 
 const MACHINE_ON_POWER_THRESHOLD_WATTS = 4;
@@ -691,7 +692,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       from,
       to,
       groupBy,
-      filter,
+      withStatsExclusion(filter, this.configService),
     );
   }
 
@@ -709,7 +710,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     return this.usingMachineRepository.countDailySessionsByRegistration(
       from,
       to,
-      filter,
+      withStatsExclusion(filter, this.configService),
     );
   }
 

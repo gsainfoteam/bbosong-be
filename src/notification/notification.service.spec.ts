@@ -336,7 +336,7 @@ describe('daily laundry room notification stats', () => {
       '2026-01-01',
       '2026-03-31',
     );
-    expect(countDaily).toHaveBeenCalledWith('2026-01-01', '2026-03-31');
+    expect(countDaily).toHaveBeenCalledWith('2026-01-01', '2026-03-31', []);
   });
 });
 
