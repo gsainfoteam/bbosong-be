@@ -479,4 +479,14 @@ export class MachineRepository {
       data: { isCommissioned: false },
     });
   }
+
+  async deleteMachinePowerBefore(before: Date): Promise<number> {
+    const result = await this.databaseService.machinePower
+      .deleteMany({ where: { recordedAt: { lt: before } } })
+      .catch((error) => {
+        this.logger.error(`deleteMachinePowerBefore error: ${error}`);
+        throw new InternalServerErrorException('Database Error');
+      });
+    return result.count;
+  }
 }

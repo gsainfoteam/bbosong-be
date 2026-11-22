@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { NotificationModule } from '../notification/notification.module';
 import { MachineController } from './machine.controller';
 import { MachineService } from './machine.service';
+import { MachinePowerCleanupService } from './machine-power-cleanup.service';
 import { MachineConnectivityService } from './machine-connectivity.service';
 import { ShlinkService } from './shlink.service';
 import { ThinqModule } from '../thinq/thinq.module';
@@ -39,6 +40,7 @@ import { ThinqPollingService } from './thinq-polling.service';
     MachineConnectivityService,
     ThinqMqttService,
     ThinqPollingService,
+    MachinePowerCleanupService,
   ],
   exports: [MachineService],
 })
