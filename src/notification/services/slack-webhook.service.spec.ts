@@ -1,3 +1,5 @@
+import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { SlackWebhookService } from './slack-webhook.service';
 
 describe('SlackWebhookService', () => {
@@ -7,7 +9,9 @@ describe('SlackWebhookService', () => {
     global.fetch = fetchMock as never;
   });
   const make = (url?: string) =>
-    new SlackWebhookService({ slackWebhookUrl: url } as never);
+    new SlackWebhookService(
+      new BbosongConfigService(new ConfigService({ SLACK_WEBHOOK_URL: url })),
+    );
 
   it('does nothing when SLACK_WEBHOOK_URL is unset', async () => {
     await make().send('hi');

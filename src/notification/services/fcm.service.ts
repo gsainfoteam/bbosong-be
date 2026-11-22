@@ -13,7 +13,6 @@ import { formatError } from '../../common/utils/format-error.util';
 import { PushPayload } from '../types/push-payload.type';
 
 const FIREBASE_APP_NAME = 'bbosong-fcm';
-const DEFAULT_ANDROID_CHANNEL_ID = 'default';
 
 /** FCM error codes that mean the registration token can never work again. */
 const DEAD_TOKEN_CODES = new Set([
@@ -90,9 +89,7 @@ export class FcmService implements OnModuleInit {
         // Time-sensitive laundry alerts should wake the device during Doze.
         priority: 'high',
         notification: {
-          channelId:
-            this.configService.fcmAndroidChannelId ||
-            DEFAULT_ANDROID_CHANNEL_ID,
+          channelId: this.configService.fcmAndroidChannelId,
           sound: 'default',
         },
       },

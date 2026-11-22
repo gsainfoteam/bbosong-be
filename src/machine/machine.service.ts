@@ -323,9 +323,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const machineRegisterUrl =
-      this.configService.machineRegisterUrl ??
-      'https://bbosong.gistory.me/machine-register';
+    const machineRegisterUrl = this.configService.machineRegisterUrl;
     const longUrl = `${machineRegisterUrl.replace(/\/+$/, '')}/${machine.uuid}`;
     const shortUrl = await this.shlinkService.ensureShortUrl(longUrl);
     return await this.machineRepository.updateMachineShortUrl(

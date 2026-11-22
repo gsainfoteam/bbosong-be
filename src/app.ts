@@ -23,12 +23,7 @@ export const makeApp = async () => {
 
   app.use(cookieParser());
 
-  const corsWhitelist = new Set(
-    configService.corsOrigins
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter((origin) => origin !== ''),
-  );
+  const corsWhitelist = new Set(configService.corsOrigins);
 
   app.enableCors({
     origin: (

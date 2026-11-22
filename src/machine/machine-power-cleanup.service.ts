@@ -4,7 +4,6 @@ import { BbosongConfigService } from '../config/bbosong-config.service';
 import { Cron } from '@nestjs/schedule';
 import { formatError } from '../common/utils/format-error.util';
 
-const DEFAULT_RETENTION_DAYS = 30;
 const DAY_MS = 86_400_000;
 
 @Injectable()
@@ -17,12 +16,7 @@ export class MachinePowerCleanupService {
     private readonly machineRepository: MachineRepository,
     configService: BbosongConfigService,
   ) {
-    const days = Number(
-      configService.machinePowerRetentionDays ?? DEFAULT_RETENTION_DAYS,
-    );
-    this.retentionMs =
-      (Number.isFinite(days) && days >= 1 ? days : DEFAULT_RETENTION_DAYS) *
-      DAY_MS;
+    this.retentionMs = configService.machinePowerRetentionDays * DAY_MS;
   }
 
   @Cron('0 3 * * *')

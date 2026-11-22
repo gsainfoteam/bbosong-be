@@ -17,10 +17,6 @@ import { FcmService } from './fcm.service';
 const MIN_ENDS_AT_DRIFT_SECONDS = 120;
 /** Minimum spacing of messages when only the finish time moved. */
 const MIN_UPDATE_INTERVAL_MS = 60_000;
-const DEFAULT_TICK_INTERVAL_SECONDS = 180;
-/** Lower bound keeps ticks clear of the 60s correction throttle. */
-const MIN_TICK_INTERVAL_SECONDS = 60;
-const MAX_TICK_INTERVAL_SECONDS = 3600;
 /** How often the scheduler looks for sessions whose tick is due. */
 const TICK_CHECK_INTERVAL_MS = 15_000;
 /** Total attempts (first + retries) of the one-off message sent at `endsAt`. */
@@ -70,19 +66,7 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
     private readonly fcmService: FcmService,
     configService: BbosongConfigService,
   ) {
-    const raw = configService.liveUpdateTickIntervalSeconds;
-    const seconds =
-      raw === undefined || raw === null || raw === '' ? NaN : Number(raw);
-    if (seconds === 0) this.tickIntervalMs = 0;
-    else if (
-      Number.isFinite(seconds) &&
-      seconds >= MIN_TICK_INTERVAL_SECONDS &&
-      seconds <= MAX_TICK_INTERVAL_SECONDS
-    ) {
-      this.tickIntervalMs = seconds * 1000;
-    } else {
-      this.tickIntervalMs = DEFAULT_TICK_INTERVAL_SECONDS * 1000;
-    }
+    this.tickIntervalMs = configService.liveUpdateTickIntervalMs;
   }
 
   onModuleInit(): void {

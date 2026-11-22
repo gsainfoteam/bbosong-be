@@ -22,11 +22,7 @@ import { ThinqPollingService } from './thinq-polling.service';
     MatterClientModule.forRootAsync({
       inject: [BbosongConfigService],
       useFactory: (configService: BbosongConfigService) => ({
-        sites: configService.matterSites.split(',').map((config) => {
-          const [id, ...urlParts] = config.split(':');
-          const wsUrl = urlParts.join(':');
-          return { id, wsUrl };
-        }),
+        sites: configService.matterSites,
       }),
     }),
   ],

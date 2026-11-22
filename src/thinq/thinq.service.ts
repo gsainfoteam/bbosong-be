@@ -1,6 +1,9 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { BbosongConfigService } from '../config/bbosong-config.service';
+import {
+  BbosongConfigService,
+  THINQ_API_SERVERS,
+} from '../config/bbosong-config.service';
 import { isAxiosError } from 'axios';
 import { randomUUID } from 'node:crypto';
 import { firstValueFrom } from 'rxjs';
@@ -23,14 +26,6 @@ export type ThinqMqttCertificate = {
   certificatePem: string;
   subscriptions: string[];
 };
-
-// Regional servers and read-only fields from the official ThinQ Connect OpenAPI:
-// https://smartsolution.developer.lge.com/ko/apiManage/thinq_connect
-const THINQ_API_SERVERS = [
-  'https://api-kic.lgthinq.com',
-  'https://api-aic.lgthinq.com',
-  'https://api-eic.lgthinq.com',
-];
 
 const MQTT_CLIENT_BODY = {
   type: 'MQTT',
@@ -59,13 +54,8 @@ export class ThinqService {
     this.country = configService.thinqCountryCode?.trim();
     this.clientId = configService.thinqClientId?.trim();
     this.apiKey = configService.thinqApiKey?.trim();
-    this.baseUrl = configService.thinqBaseUrl ?? THINQ_API_SERVERS[0];
-    const interval = Number(configService.thinqPollIntervalSeconds ?? 600);
-    // Reconcile-only cadence; MQTT carries live updates. OpenAPI has no numeric quota.
-    this.pollIntervalMs =
-      Number.isFinite(interval) && interval >= 300 && interval <= 86_400
-        ? interval * 1000
-        : 600_000;
+    this.baseUrl = configService.thinqBaseUrl;
+    this.pollIntervalMs = configService.thinqPollIntervalMs;
   }
 
   get enabled(): boolean {

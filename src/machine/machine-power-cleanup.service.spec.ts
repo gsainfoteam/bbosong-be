@@ -11,9 +11,9 @@ describe('MachinePowerCleanupService', () => {
     const deleteMachinePowerBefore = jest.fn().mockResolvedValue(3);
     const service = new MachinePowerCleanupService(
       { deleteMachinePowerBefore } as unknown as MachineRepository,
-      new BbosongConfigService({
-        get: (_: string, d: unknown) => days ?? d,
-      } as unknown as ConfigService),
+      new BbosongConfigService(
+        new ConfigService({ MACHINE_POWER_RETENTION_DAYS: days }),
+      ),
     );
     return { service, deleteMachinePowerBefore };
   };

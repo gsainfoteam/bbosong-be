@@ -15,7 +15,7 @@ export class SlackWebhookService {
   constructor(private readonly configService: BbosongConfigService) {}
 
   async send(text: string): Promise<void> {
-    const url = this.configService.slackWebhookUrl?.trim();
+    const url = this.configService.slackWebhookUrl;
     if (!url) return;
     try {
       const res = await fetch(url, {

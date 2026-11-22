@@ -17,11 +17,7 @@ describe('ThinQ Connect HTTP client', () => {
   };
   const http = { request: jest.fn() };
   function config(values: Record<string, unknown>) {
-    return new BbosongConfigService({
-      get: jest.fn(
-        (key: string, fallback?: unknown) => values[key] ?? fallback,
-      ),
-    } as unknown as ConfigService);
+    return new BbosongConfigService(new ConfigService(values));
   }
   function response(value: unknown) {
     return of({ data: { response: value } });

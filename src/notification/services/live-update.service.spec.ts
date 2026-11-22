@@ -1,3 +1,5 @@
+import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../../config/bbosong-config.service';
 import { LiveUpdateService } from './live-update.service';
 import { buildLiveUpdateSession } from '../types/live-update.type';
 
@@ -15,7 +17,9 @@ describe('LiveUpdateService', () => {
   const create = (tickSeconds?: string) => {
     return new LiveUpdateService(
       fcmService as never,
-      { liveUpdateTickIntervalSeconds: tickSeconds } as never,
+      new BbosongConfigService(
+        new ConfigService({ LIVE_UPDATE_TICK_INTERVAL_SECONDS: tickSeconds }),
+      ),
     );
   };
 

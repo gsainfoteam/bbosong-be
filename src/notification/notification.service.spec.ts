@@ -1,3 +1,5 @@
+import { ConfigService } from '@nestjs/config';
+import { BbosongConfigService } from '../config/bbosong-config.service';
 import { NotificationService } from './notification.service';
 import { NotificationRepository } from '@lib/database/repositories/notification.repository';
 import {
@@ -348,7 +350,11 @@ describe('daily laundry room notification stats', () => {
       {} as never,
       {} as never,
       {} as never,
-      { statsExcludedUserIds: `${excluded}, not-a-uuid` } as never,
+      new BbosongConfigService(
+        new ConfigService({
+          STATS_EXCLUDED_USER_IDS: `${excluded}, not-a-uuid`,
+        }),
+      ),
     );
 
     await withConfig.getDailyLaundryRoomNotificationStats(

@@ -21,10 +21,7 @@ export class ShlinkService {
     const apiKey = configService.shlinkApiKey;
     this.domain = configService.shlinkDomain;
     this.tag = configService.shlinkTag;
-    const shortCodeLength = configService.shlinkShortCodeLength;
-    this.shortCodeLength = shortCodeLength
-      ? Number.parseInt(shortCodeLength)
-      : undefined;
+    this.shortCodeLength = configService.shlinkShortCodeLength;
 
     if (baseUrl && apiKey) {
       this.client = new ShlinkApiClient(new FetchHttpClient(), {

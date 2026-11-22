@@ -2,6 +2,28 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { StringValue } from 'ms';
 
+// Regional servers from the official ThinQ Connect OpenAPI:
+// https://smartsolution.developer.lge.com/ko/apiManage/thinq_connect
+export const THINQ_API_SERVERS = [
+  'https://api-kic.lgthinq.com',
+  'https://api-aic.lgthinq.com',
+  'https://api-eic.lgthinq.com',
+];
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DEFAULT_ANDROID_CHANNEL_ID = 'default';
+const DEFAULT_MACHINE_REGISTER_URL =
+  'https://bbosong.gistory.me/machine-register';
+const DEFAULT_MACHINE_POWER_RETENTION_DAYS = 30;
+const DEFAULT_LIVE_UPDATE_TICK_INTERVAL_SECONDS = 180;
+/** Lower bound keeps ticks clear of the 60s correction throttle. */
+const MIN_LIVE_UPDATE_TICK_INTERVAL_SECONDS = 60;
+const MAX_LIVE_UPDATE_TICK_INTERVAL_SECONDS = 3600;
+const DEFAULT_THINQ_POLL_INTERVAL_SECONDS = 600;
+const MIN_THINQ_POLL_INTERVAL_SECONDS = 300;
+const MAX_THINQ_POLL_INTERVAL_SECONDS = 86_400;
+
 /** Typed access to every environment variable the application reads. */
 @Injectable()
 export class BbosongConfigService {
@@ -26,8 +48,13 @@ export class BbosongConfigService {
   get clientId(): string {
     return this.config.getOrThrow<string>('CLIENT_ID');
   }
-  get corsOrigins(): string {
-    return this.config.getOrThrow<string>('CORS_ORIGINS');
+  /** Comma-separated CORS origins, trimmed, empty entries dropped. */
+  get corsOrigins(): string[] {
+    return this.config
+      .getOrThrow<string>('CORS_ORIGINS')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin !== '');
   }
 
   // Auth
@@ -71,8 +98,11 @@ export class BbosongConfigService {
   get firebaseServiceAccountJson(): string | undefined {
     return this.config.get<string>('FIREBASE_SERVICE_ACCOUNT_JSON');
   }
-  get fcmAndroidChannelId(): string | undefined {
-    return this.config.get<string>('FCM_ANDROID_CHANNEL_ID');
+  get fcmAndroidChannelId(): string {
+    return (
+      this.config.get<string>('FCM_ANDROID_CHANNEL_ID') ||
+      DEFAULT_ANDROID_CHANNEL_ID
+    );
   }
   get apnsKeyP8(): string | undefined {
     return this.config.get<string>('APNS_KEY_P8');
@@ -87,47 +117,88 @@ export class BbosongConfigService {
     return this.config.get<string>('APNS_BUNDLE_ID');
   }
   get slackWebhookUrl(): string | undefined {
-    return this.config.get<string>('SLACK_WEBHOOK_URL');
+    return this.config.get<string>('SLACK_WEBHOOK_URL')?.trim() || undefined;
   }
-  get liveUpdateTickIntervalSeconds(): string | number | undefined {
-    return this.config.get<string | number>(
+  /** Live Update tick cadence in ms; 0 disables ticks. */
+  get liveUpdateTickIntervalMs(): number {
+    const raw = this.config.get<string | number>(
       'LIVE_UPDATE_TICK_INTERVAL_SECONDS',
     );
+    const seconds =
+      raw === undefined || raw === null || raw === '' ? NaN : Number(raw);
+    if (seconds === 0) return 0;
+    if (
+      Number.isFinite(seconds) &&
+      seconds >= MIN_LIVE_UPDATE_TICK_INTERVAL_SECONDS &&
+      seconds <= MAX_LIVE_UPDATE_TICK_INTERVAL_SECONDS
+    ) {
+      return seconds * 1000;
+    }
+    return DEFAULT_LIVE_UPDATE_TICK_INTERVAL_SECONDS * 1000;
   }
 
   // ThinQ
   get thinqPat(): string | undefined {
-    return this.config.get<string>('THINQ_PAT');
+    return this.config.get<string>('THINQ_PAT')?.trim();
   }
   get thinqCountryCode(): string | undefined {
-    return this.config.get<string>('THINQ_COUNTRY_CODE');
+    return this.config.get<string>('THINQ_COUNTRY_CODE')?.trim();
   }
   get thinqClientId(): string | undefined {
-    return this.config.get<string>('THINQ_CLIENT_ID');
+    return this.config.get<string>('THINQ_CLIENT_ID')?.trim();
   }
   get thinqApiKey(): string | undefined {
-    return this.config.get<string>('THINQ_API_KEY');
+    return this.config.get<string>('THINQ_API_KEY')?.trim();
   }
-  get thinqBaseUrl(): string | undefined {
-    return this.config.get<string>('THINQ_BASE_URL');
+  get thinqBaseUrl(): string {
+    return this.config.get<string>('THINQ_BASE_URL') ?? THINQ_API_SERVERS[0];
   }
-  get thinqPollIntervalSeconds(): string | number | undefined {
-    return this.config.get<string | number>('THINQ_POLL_INTERVAL_SECONDS');
+  /** ThinQ REST reconcile cadence in ms; invalid values fall back to the default. */
+  get thinqPollIntervalMs(): number {
+    const seconds = Number(
+      this.config.get<string | number>('THINQ_POLL_INTERVAL_SECONDS') ??
+        DEFAULT_THINQ_POLL_INTERVAL_SECONDS,
+    );
+    return Number.isFinite(seconds) &&
+      seconds >= MIN_THINQ_POLL_INTERVAL_SECONDS &&
+      seconds <= MAX_THINQ_POLL_INTERVAL_SECONDS
+      ? seconds * 1000
+      : DEFAULT_THINQ_POLL_INTERVAL_SECONDS * 1000;
   }
 
-  get statsExcludedUserIds(): string | undefined {
-    return this.config.get<string>('STATS_EXCLUDED_USER_IDS');
+  /** User UUIDs from the comma-separated list; invalid entries are dropped. */
+  get statsExcludedUserIds(): string[] {
+    return (this.config.get<string>('STATS_EXCLUDED_USER_IDS') ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => UUID_RE.test(id));
   }
 
   // Machine
-  get matterSites(): string {
-    return this.config.getOrThrow<string>('MATTER_SITES');
+  get matterSites(): { id: string; wsUrl: string }[] {
+    return this.config
+      .getOrThrow<string>('MATTER_SITES')
+      .split(',')
+      .map((site) => {
+        const [id, ...urlParts] = site.split(':');
+        return { id, wsUrl: urlParts.join(':') };
+      });
   }
-  get machineRegisterUrl(): string | undefined {
-    return this.config.get<string>('MACHINE_REGISTER_URL');
+  get machineRegisterUrl(): string {
+    return (
+      this.config.get<string>('MACHINE_REGISTER_URL') ??
+      DEFAULT_MACHINE_REGISTER_URL
+    );
   }
-  get machinePowerRetentionDays(): string | number | undefined {
-    return this.config.get<string | number>('MACHINE_POWER_RETENTION_DAYS');
+  /** Retention in days; invalid or < 1 falls back to the default. */
+  get machinePowerRetentionDays(): number {
+    const days = Number(
+      this.config.get<string | number>('MACHINE_POWER_RETENTION_DAYS') ??
+        DEFAULT_MACHINE_POWER_RETENTION_DAYS,
+    );
+    return Number.isFinite(days) && days >= 1
+      ? days
+      : DEFAULT_MACHINE_POWER_RETENTION_DAYS;
   }
   get shlinkUrl(): string | undefined {
     return this.config.get<string>('SHLINK_URL');
@@ -141,7 +212,8 @@ export class BbosongConfigService {
   get shlinkTag(): string | undefined {
     return this.config.get<string>('SHLINK_TAG');
   }
-  get shlinkShortCodeLength(): string | undefined {
-    return this.config.get<string>('SHLINK_SHORT_CODE_LENGTH');
+  get shlinkShortCodeLength(): number | undefined {
+    const raw = this.config.get<string>('SHLINK_SHORT_CODE_LENGTH');
+    return raw ? Number.parseInt(raw) : undefined;
   }
 }
