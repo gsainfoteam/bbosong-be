@@ -703,10 +703,11 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
           updated.userUuid,
           { state: null, remainingMinutes },
           now,
+          { force: true },
         ),
       `Live Activity update for machine ${machineUuid}`,
     );
-    await this.syncWasherLiveUpdate(userUuid, machineUuid, now);
+    await this.syncWasherLiveUpdate(userUuid, machineUuid, now, true);
     return estimatedEndsAt;
   }
 
@@ -957,6 +958,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
     userUuid: string,
     machineUuid: string,
     now: Date = new Date(),
+    force = false,
   ): Promise<void> {
     await this.dispatchNotification(async () => {
       const [machine, usage] = await Promise.all([
@@ -979,6 +981,7 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
           remainingMinutes: this.remainingMinutesOf(usage, now),
         },
         now,
+        { force },
       );
     }, `Live Update for washer ${machineUuid}`);
   }
@@ -986,7 +989,8 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
   private remainingMinutesOf(usage: UsingMachine, now: Date): number | null {
     if (!usage.estimatedEndsAt) return null;
     const ms = usage.estimatedEndsAt.getTime() - now.getTime();
-    return ms > 0 ? Math.ceil(ms / 60_000) : null;
+    // An entered time that has passed is 0 minutes left, not "not entered".
+    return ms > 0 ? Math.ceil(ms / 60_000) : 0;
   }
 
   private async dispatchNotification(

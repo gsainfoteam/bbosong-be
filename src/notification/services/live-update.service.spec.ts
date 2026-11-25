@@ -311,6 +311,41 @@ describe('LiveUpdateService', () => {
         expect(sent()).toHaveLength(1);
       });
 
+      it('retries a failed first send on the tick and still sends the final', async () => {
+        fcmService.sendLiveUpdateToUser.mockResolvedValueOnce({
+          sent: 1,
+          failed: 1,
+        });
+        await syncWasher(20);
+        expect(sent()).toHaveLength(1);
+
+        await service.tick(later(180));
+        expect(sent()).toHaveLength(2); // retried, not dropped
+        await service.tick(later(360));
+        expect(sent()).toHaveLength(2); // delivered: no more retries
+
+        await service.tick(later(1200));
+        expect(washerFinals()).toHaveLength(1);
+      });
+
+      it('sends a user-entered change right away, even a small or recent one', async () => {
+        await syncWasher(20);
+        await service.tick(later(1201));
+        expect(washerFinals()).toHaveLength(1);
+        // 1 minute more, 1 second after the final: below the 2 minute drift and the 60 s spacing.
+        await service.syncRunning(
+          'session-2',
+          'user-1',
+          washer,
+          { state: 'RUNNING', remainingMinutes: 1 },
+          later(1202),
+          { force: true },
+        );
+        expect(sent().at(-1)![1]).toMatchObject({ remainingMinutes: '1' });
+        await service.tick(later(1202 + 60));
+        expect(washerFinals()).toHaveLength(2);
+      });
+
       it('gets another final message after the time is entered again', async () => {
         await syncWasher(20);
         await service.tick(later(1201));

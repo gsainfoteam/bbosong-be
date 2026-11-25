@@ -288,6 +288,62 @@ describe('LiveActivityService', () => {
       expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(3 * 2);
     });
 
+    it('is re-armed by a small extension that is not worth a push', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(20), now);
+      await service.pushOverdue(at(20 * 60_000));
+      apns.sendLiveActivityUpdate.mockClear();
+
+      // 1 more minute (below the 2 minute drift): nothing is pushed, but it is tracked.
+      await service.syncRunning(
+        'usage-1',
+        'user-1',
+        running(1),
+        at(20 * 60_000 + 1000),
+      );
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+      await service.pushOverdue(at(21 * 60_000 + 1000));
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledWith(
+        tokens[0],
+        expect.objectContaining({
+          endsAt: seconds + 20 * 60 + 1 + 60,
+          remainingMinutes: 0,
+        }),
+        { highPriority: true },
+        at(21 * 60_000 + 1000),
+      );
+    });
+
+    it('uses the latest finish time when a recent change was throttled', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
+      apns.sendLiveActivityUpdate.mockClear();
+      // Changed 30 s later: throttled, but the overdue time must follow it.
+      await service.syncRunning('usage-1', 'user-1', running(40), at(30_000));
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+      await service.pushOverdue(at(30 * 60_000 + 1000));
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+    });
+
+    it('pushes a forced (user-entered) change despite the throttle and drift limits', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
+      apns.sendLiveActivityUpdate.mockClear();
+      await service.syncRunning('usage-1', 'user-1', running(29), at(10_000), {
+        force: true,
+      });
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+    });
+
+    it('tries again after the token lookup failed', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(20), now);
+      apns.sendLiveActivityUpdate.mockClear();
+      repository.getTokensByUsingMachine.mockRejectedValueOnce(new Error('db'));
+
+      await service.pushOverdue(at(20 * 60_000));
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+      await service.pushOverdue(at(20 * 60_000 + 15_000));
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+    });
+
     it('stops after the session completed', async () => {
       await service.syncRunning('usage-1', 'user-1', running(20), now);
       await service.completeForUsingMachine('usage-1', 'user-1', now);

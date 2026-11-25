@@ -30,6 +30,8 @@ const MAX_OVERDUE_ATTEMPTS = 3;
 interface LastSent {
   state: LiveActivityContentState['state'];
   endsAt: number | null;
+  /** Newest finish time seen by a sync, sent or not; the overdue push uses it. */
+  latestEndsAt: number | null;
   sentAt: number;
   ownerUuid: string | null;
   /** The one-off message after `endsAt` is done (sent, given up, or not needed). */
@@ -86,8 +88,8 @@ export class LiveActivityService implements OnModuleInit, OnModuleDestroy {
     const due = [...this.lastSent.entries()].filter(
       ([, entry]) =>
         !entry.overdueDone &&
-        entry.endsAt !== null &&
-        entry.endsAt <= nowSeconds &&
+        entry.latestEndsAt !== null &&
+        entry.latestEndsAt <= nowSeconds &&
         (entry.state === 'RUNNING' || entry.state === 'COOLING'),
     );
     await Promise.all(
@@ -95,30 +97,39 @@ export class LiveActivityService implements OnModuleInit, OnModuleDestroy {
         // Claim first so overlapping checks do not double-send.
         entry.overdueDone = true;
         entry.overdueAttempts = (entry.overdueAttempts ?? 0) + 1;
-        const { owned } = this.splitByOwner(
-          await this.liveActivityRepository.getTokensByUsingMachine(
-            usingMachineUuid,
-          ),
-          entry.ownerUuid,
-        );
-        if (owned.length === 0) return;
-        const contentState: LiveActivityContentState = {
-          state: entry.state,
-          endsAt: entry.endsAt,
-          remainingMinutes: 0,
-          updatedAt: nowSeconds,
-        };
-        const results = await this.pushAndPrune(owned, (token) =>
-          this.apnsService.sendLiveActivityUpdate(
-            token,
-            contentState,
-            { highPriority: true },
-            now,
-          ),
-        );
+        let failed = false;
+        try {
+          const { owned } = this.splitByOwner(
+            await this.liveActivityRepository.getTokensByUsingMachine(
+              usingMachineUuid,
+            ),
+            entry.ownerUuid,
+          );
+          if (owned.length === 0) return;
+          const contentState: LiveActivityContentState = {
+            state: entry.state,
+            endsAt: entry.latestEndsAt,
+            remainingMinutes: 0,
+            updatedAt: nowSeconds,
+          };
+          const results = await this.pushAndPrune(owned, (token) =>
+            this.apnsService.sendLiveActivityUpdate(
+              token,
+              contentState,
+              { highPriority: true },
+              now,
+            ),
+          );
+          failed = results.includes('failed');
+        } catch (error: unknown) {
+          this.logger.warn(
+            `Failed to push overdue Live Activity ${usingMachineUuid}: ${formatError(error)}`,
+          );
+          failed = true;
+        }
         if (
-          results.includes('failed') &&
-          entry.overdueAttempts < MAX_OVERDUE_ATTEMPTS &&
+          failed &&
+          (entry.overdueAttempts ?? 0) < MAX_OVERDUE_ATTEMPTS &&
           this.lastSent.get(usingMachineUuid) === entry
         ) {
           entry.overdueDone = false;
@@ -157,6 +168,8 @@ export class LiveActivityService implements OnModuleInit, OnModuleDestroy {
     ownerUuid: string | null,
     thinq: { state: string | null; remainingMinutes: number | null },
     now: Date = new Date(),
+    /** `force`: a user-entered finish time; send even for a small or recent change. */
+    options: { force?: boolean } = {},
   ): Promise<void> {
     if (!this.apnsService.isEnabled()) return;
     const contentState = buildRunningContentState(
@@ -165,16 +178,33 @@ export class LiveActivityService implements OnModuleInit, OnModuleDestroy {
       now,
     );
     const previous = this.lastSent.get(usingMachineUuid);
+    if (previous) {
+      // Track the newest finish time even when nothing is sent below, so the
+      // overdue push fires at the right time and is re-armed by any extension.
+      previous.latestEndsAt = contentState.endsAt;
+      if (
+        contentState.endsAt === null ||
+        contentState.endsAt > Math.floor(now.getTime() / 1000)
+      ) {
+        previous.overdueDone = false;
+        previous.overdueAttempts = 0;
+      }
+    }
     const stateChanged = !previous || previous.state !== contentState.state;
+    const forced =
+      options.force === true &&
+      !!previous &&
+      previous.endsAt !== contentState.endsAt;
     const endsAtMoved =
       !!previous &&
       (previous.endsAt === null || contentState.endsAt === null
         ? previous.endsAt !== contentState.endsAt
         : Math.abs(contentState.endsAt - previous.endsAt) >=
           MIN_ENDS_AT_DRIFT_SECONDS);
-    if (!stateChanged && !endsAtMoved) return;
+    if (!stateChanged && !endsAtMoved && !forced) return;
     if (
       !stateChanged &&
+      !forced &&
       previous &&
       now.getTime() - previous.sentAt < MIN_UPDATE_INTERVAL_MS
     ) {
@@ -195,6 +225,7 @@ export class LiveActivityService implements OnModuleInit, OnModuleDestroy {
     const entry: LastSent = {
       state: contentState.state,
       endsAt: contentState.endsAt,
+      latestEndsAt: contentState.endsAt,
       sentAt: now.getTime(),
       ownerUuid,
       // A finish time already past when sent is shown as "almost done" by that very update.

@@ -41,6 +41,8 @@ interface LastSent {
    */
   finalDone?: boolean;
   finalAttempts?: number;
+  /** Resends of a washer's transition message that did not reach every device. */
+  retryAttempts?: number;
 }
 
 /**
@@ -122,7 +124,20 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
           nowMs - entry.attemptedAt >= this.tickIntervalMs)
       );
     });
+    // Washers have no ThinQ sync to re-register them, so a transition message
+    // that missed a device is retried here (until `endsAt`, when the final goes).
+    const retries = [...this.lastSent.entries()].filter(([, entry]) => {
+      const { current } = entry;
+      return (
+        entry.session.kind === MachineType.WASHER &&
+        entry.retryTransition === true &&
+        (entry.retryAttempts ?? 0) < MAX_FINAL_ATTEMPTS &&
+        (current.endsAt === null || current.endsAt > nowSeconds) &&
+        nowMs - entry.attemptedAt >= this.tickIntervalMs
+      );
+    });
     await Promise.all([
+      ...retries.map(([key, entry]) => this.sendRetry(key, entry, nowMs)),
       ...finals.map(([key, entry]) => this.sendFinal(key, entry, nowMs)),
       ...due.map(async ([key, entry]) => {
         const endsAt = entry.current.endsAt!;
@@ -152,6 +167,37 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
         // failed > 0 and nothing sent: retried at the next tick.
       }),
     ]);
+  }
+
+  /** Resends the current state of a washer session to the owner's devices. */
+  private async sendRetry(
+    key: string,
+    entry: LastSent,
+    nowMs: number,
+  ): Promise<void> {
+    const nowSeconds = Math.floor(nowMs / 1000);
+    const { endsAt } = entry.current;
+    entry.attemptedAt = nowMs; // claim; also spaces out retries
+    entry.retryAttempts = (entry.retryAttempts ?? 0) + 1;
+    const { sent, failed } = await this.fcmService.sendLiveUpdateToUser(
+      entry.ownerUuid,
+      buildLiveUpdateData(entry.session, {
+        state: entry.current.state,
+        endsAt,
+        remainingMinutes:
+          endsAt === null
+            ? null
+            : Math.max(0, Math.ceil((endsAt - nowSeconds) / 60)),
+        updatedAt: nowSeconds,
+      }),
+    );
+    if (this.lastSent.get(key) !== entry) return;
+    if (sent > 0) {
+      entry.sentAt = nowMs;
+      entry.retryTransition = false;
+    } else if (failed === 0) {
+      this.lastSent.delete(key);
+    }
   }
 
   /**
@@ -198,6 +244,8 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
     session: LiveUpdateSession,
     thinq: { state: string | null; remainingMinutes: number | null },
     now: Date = new Date(),
+    /** `force`: a user-entered finish time; send even for a small or recent change. */
+    options: { force?: boolean } = {},
   ): Promise<void> {
     if (!ownerUuid) return;
     const contentState = buildRunningContentState(
@@ -229,9 +277,12 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
           ? previous.endsAt !== contentState.endsAt
           : Math.abs(contentState.endsAt - previous.endsAt) >=
             MIN_ENDS_AT_DRIFT_SECONDS;
+      const forced =
+        options.force === true && previous.endsAt !== contentState.endsAt;
       if (
-        !endsAtMoved ||
-        now.getTime() - previous.sentAt < MIN_UPDATE_INTERVAL_MS
+        !forced &&
+        (!endsAtMoved ||
+          now.getTime() - previous.sentAt < MIN_UPDATE_INTERVAL_MS)
       ) {
         return;
       }
@@ -264,6 +315,10 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
         // Owner changed: never restore the old owner's entry (it would keep
         // ticking them). Keep the new owner's entry so the next tick or sync
         // retries them.
+        entry.retryTransition = true;
+      } else if (session.kind === MachineType.WASHER) {
+        // No ThinQ sync will register a washer again: keep it so the tick
+        // retries the missed devices and the final message still goes out.
         entry.retryTransition = true;
       } else {
         this.lastSent.delete(usingMachineUuid);

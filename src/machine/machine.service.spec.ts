@@ -559,6 +559,7 @@ describe('MachineService access and registration', () => {
         userUuid,
         { state: null, remainingMinutes: 37 },
         now,
+        { force: true },
       );
     });
 
@@ -641,6 +642,7 @@ describe('MachineService access and registration', () => {
         expect.objectContaining({ kind: MachineType.WASHER }),
         { state: 'RUNNING', remainingMinutes: null },
         expect.any(Date),
+        { force: false },
       );
     });
 
@@ -684,6 +686,29 @@ describe('MachineService access and registration', () => {
         expect.objectContaining({ kind: MachineType.WASHER }),
         { state: 'RUNNING', remainingMinutes: 37 },
         now,
+        { force: true },
+      );
+    });
+
+    it('keeps 0 minutes left (not "not entered") when re-registering after the entered time passed', async () => {
+      usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue({
+        ...usage,
+        estimatedEndsAt: new Date(Date.now() - 5 * 60_000),
+      });
+
+      await service.enableMachineNotification(
+        userUuid,
+        machineUuid,
+        Gender.MALE,
+      );
+
+      expect(liveUpdateService.syncRunning).toHaveBeenCalledWith(
+        'usage-1',
+        userUuid,
+        expect.anything(),
+        { state: 'RUNNING', remainingMinutes: 0 },
+        expect.any(Date),
+        { force: false },
       );
     });
 

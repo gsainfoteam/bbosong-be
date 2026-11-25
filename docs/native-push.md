@@ -187,6 +187,8 @@ Android 16 Live Update(`Notification.ProgressStyle`)는 서버 `notification` �
 
 tick은 `endsAt`을 모르는 상태(`DETECTING` 등), `END`/`ERROR`, 세탁기(세탁기는 진행·마무리 메시지만 받는다), `endsAt`이 지난 세션에는 보내지 않는다. 세션 종료·추적 해제·owner 변경(이전 owner)이면 중단하고, owner의 Live Update 기기가 하나도 없으면(구독 해제/`supportsLiveUpdate=false`) 그 세션의 tick을 멈춘다(다음 ThinQ 동기화에서 다시 등록).
 
+세탁기는 ThinQ 동기화로 다시 등록되지 않으므로, 첫 전송이 일부 기기에 닿지 않으면 세션을 유지한 채 tick마다(최대 3회) 다시 보낸다. 사용자가 입력한 남은 시간 변경은 2분 미만이거나 직전 전송 후 60초 안이어도 바로 보내며(`force`), `endsAt`이 이미 지난 세션을 재등록하면 `remainingMinutes: 0`을 유지한다.
+
 ### tick 설정
 
 | 환경 변수 | 필수 | 설명 |
