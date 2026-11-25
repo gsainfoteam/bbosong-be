@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   Gender,
   Location,
@@ -82,6 +86,7 @@ describe('MachineService access and registration', () => {
     createUsingMachine: jest.fn(),
     countDailySessionsByRegistration: jest.fn(),
     countUsageStats: jest.fn(),
+    setEstimatedEndsAt: jest.fn(),
   };
   let service: MachineService;
   const liveActivityService = {
@@ -232,9 +237,10 @@ describe('MachineService access and registration', () => {
     expect(
       usingMachineRepository.enableMachineNotification,
     ).toHaveBeenCalledWith(userUuid, machineUuid);
+    // Only the washer Live Update lookup; no failure diagnosis.
     expect(
       usingMachineRepository.getUsingMachineByMachineUuid,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledTimes(1);
   });
 
   it('returns a distinct error when the machine is not running', async () => {
@@ -519,6 +525,178 @@ describe('MachineService access and registration', () => {
       userUuid,
       machineUuid,
     );
+  });
+
+  describe('setRemainingTime', () => {
+    const now = new Date('2026-11-25T10:00:00.000Z');
+    const usage = {
+      uuid: 'usage-1',
+      machineUuid,
+      userUuid,
+      notifyOnCompletion: true,
+      startedAt: new Date('2026-11-25T09:50:00.000Z'),
+      endedAt: null,
+      estimatedEndsAt: null,
+    };
+
+    it('stores server now + remaining minutes and syncs the Live Activity', async () => {
+      const estimatedEndsAt = new Date('2026-11-25T10:37:00.000Z');
+      usingMachineRepository.setEstimatedEndsAt.mockResolvedValue({
+        ...usage,
+        estimatedEndsAt,
+      });
+
+      await expect(
+        service.setRemainingTime(userUuid, machineUuid, Gender.MALE, 37, now),
+      ).resolves.toEqual(estimatedEndsAt);
+      expect(usingMachineRepository.setEstimatedEndsAt).toHaveBeenCalledWith(
+        userUuid,
+        machineUuid,
+        estimatedEndsAt,
+      );
+      expect(liveActivityService.syncRunning).toHaveBeenCalledWith(
+        'usage-1',
+        userUuid,
+        { state: null, remainingMinutes: 37 },
+        now,
+      );
+    });
+
+    it('rejects dryers', async () => {
+      machineRepository.getMachineWithUsage.mockResolvedValue({
+        ...machine,
+        type: MachineType.DRYER,
+      });
+
+      await expect(
+        service.setRemainingTime(userUuid, machineUuid, Gender.MALE, 37, now),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(usingMachineRepository.setEstimatedEndsAt).not.toHaveBeenCalled();
+    });
+
+    it('rejects a machine of another gender', async () => {
+      await expect(
+        service.setRemainingTime(userUuid, machineUuid, Gender.FEMALE, 37, now),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('returns MACHINE_NOT_RUNNING without an open session', async () => {
+      usingMachineRepository.setEstimatedEndsAt.mockResolvedValue(null);
+
+      await expect(
+        service.setRemainingTime(userUuid, machineUuid, Gender.MALE, 37, now),
+      ).rejects.toMatchObject({
+        response: { errorCode: 'MACHINE_NOT_RUNNING' },
+      });
+      expect(liveActivityService.syncRunning).not.toHaveBeenCalled();
+    });
+
+    it('forbids a session operated by another user', async () => {
+      usingMachineRepository.setEstimatedEndsAt.mockResolvedValue(null);
+      usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue({
+        ...usage,
+        userUuid: 'someone-else',
+      });
+
+      await expect(
+        service.setRemainingTime(userUuid, machineUuid, Gender.MALE, 37, now),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('still succeeds when the Live Activity push fails', async () => {
+      usingMachineRepository.setEstimatedEndsAt.mockResolvedValue(usage);
+      liveActivityService.syncRunning.mockRejectedValue(new Error('apns'));
+
+      await expect(
+        service.setRemainingTime(userUuid, machineUuid, Gender.MALE, 37, now),
+      ).resolves.toEqual(new Date('2026-11-25T10:37:00.000Z'));
+    });
+  });
+
+  describe('washer Live Update', () => {
+    const usage = {
+      uuid: 'usage-1',
+      machineUuid,
+      userUuid,
+      notifyOnCompletion: true,
+      startedAt: new Date('2026-11-25T09:50:00.000Z'),
+      endedAt: null,
+      estimatedEndsAt: null,
+    };
+
+    it('starts when a user registers a washer', async () => {
+      usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue(
+        usage,
+      );
+
+      await service.enableMachineNotification(
+        userUuid,
+        machineUuid,
+        Gender.MALE,
+      );
+
+      expect(liveUpdateService.syncRunning).toHaveBeenCalledWith(
+        'usage-1',
+        userUuid,
+        expect.objectContaining({ kind: MachineType.WASHER }),
+        { state: 'RUNNING', remainingMinutes: null },
+        expect.any(Date),
+      );
+    });
+
+    it('is not started for dryers (ThinQ sync owns them)', async () => {
+      machineRepository.getMachine.mockResolvedValue({
+        ...machine,
+        type: MachineType.DRYER,
+      });
+      usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue(
+        usage,
+      );
+
+      await service.enableMachineNotification(
+        userUuid,
+        machineUuid,
+        Gender.MALE,
+      );
+
+      expect(liveUpdateService.syncRunning).not.toHaveBeenCalled();
+    });
+
+    it('carries the entered remaining time', async () => {
+      const now = new Date('2026-11-25T10:00:00.000Z');
+      usingMachineRepository.setEstimatedEndsAt.mockResolvedValue(usage);
+      usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue({
+        ...usage,
+        estimatedEndsAt: new Date('2026-11-25T10:37:00.000Z'),
+      });
+
+      await service.setRemainingTime(
+        userUuid,
+        machineUuid,
+        Gender.MALE,
+        37,
+        now,
+      );
+
+      expect(liveUpdateService.syncRunning).toHaveBeenCalledWith(
+        'usage-1',
+        userUuid,
+        expect.objectContaining({ kind: MachineType.WASHER }),
+        { state: 'RUNNING', remainingMinutes: 37 },
+        now,
+      );
+    });
+
+    it('does not fail registration when the push fails', async () => {
+      usingMachineRepository.getUsingMachineByMachineUuid.mockResolvedValue(
+        usage,
+      );
+      liveUpdateService.syncRunning.mockRejectedValue(new Error('fcm'));
+
+      await expect(
+        service.enableMachineNotification(userUuid, machineUuid, Gender.MALE),
+      ).resolves.toBeUndefined();
+    });
   });
 
   describe('Live Activity registration', () => {

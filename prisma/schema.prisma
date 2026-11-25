@@ -177,6 +177,8 @@ model UsingMachine {
   notifyOnCompletion Boolean   @default(true) @map("notify_on_completion")
   startedAt          DateTime  @default(now()) @map("started_at")
   endedAt            DateTime? @map("ended_at")
+  /// Finish time entered by the session owner (washers only), computed server-side from remaining minutes.
+  estimatedEndsAt    DateTime? @map("estimated_ends_at")
 
   machine Machine @relation(fields: [machineUuid], references: [uuid], onDelete: Restrict)
 

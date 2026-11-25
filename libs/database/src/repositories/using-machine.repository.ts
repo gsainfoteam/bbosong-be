@@ -240,6 +240,36 @@ export class UsingMachineRepository {
       });
   }
 
+  // Set the estimated finish time of the user's open washer session.
+  async setEstimatedEndsAt(
+    userUuid: string,
+    machineUuid: string,
+    estimatedEndsAt: Date,
+  ): Promise<UsingMachine | null> {
+    const [updated] = await this.databaseService.usingMachine
+      .updateManyAndReturn({
+        where: {
+          machineUuid,
+          machine: { deletedAt: null, type: MachineType.WASHER },
+          endedAt: null,
+          userUuid,
+        },
+        data: { estimatedEndsAt },
+      })
+      .catch((error) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          this.logger.error(
+            `setEstimatedEndsAt prisma error: ${error.message}`,
+          );
+          throw new InternalServerErrorException('Database Error');
+        }
+        this.logger.error(`setEstimatedEndsAt error: ${error}`);
+        throw new InternalServerErrorException('Unknown Error');
+      });
+
+    return updated ?? null;
+  }
+
   // Disable completion notification for the operating user
   async disableMachineNotification(
     userUuid: string,

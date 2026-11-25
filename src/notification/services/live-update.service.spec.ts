@@ -269,20 +269,58 @@ describe('LiveUpdateService', () => {
       expect(sent()).toHaveLength(1);
     });
 
-    it('does not track washers', async () => {
+    describe('washers', () => {
       const washer = buildLiveUpdateSession(
         { uuid: 'machine-2', type: 'WASHER', location: 'A', index: 1 },
         null,
       );
-      await service.syncRunning(
-        'session-2',
-        'user-1',
-        washer,
-        { state: 'RUNNING', remainingMinutes: 20 },
-        now,
-      );
-      await service.tick(later(600));
-      expect(sent()).toHaveLength(0);
+      const syncWasher = (remainingMinutes: number | null, at: Date = now) =>
+        service.syncRunning(
+          'session-2',
+          'user-1',
+          washer,
+          { state: 'RUNNING', remainingMinutes },
+          at,
+        );
+      const washerFinals = () =>
+        sent().filter(([, d]) => d.remainingMinutes === '0');
+
+      it('never gets regular ticks', async () => {
+        await syncWasher(20);
+        await service.tick(later(600));
+        expect(sent()).toHaveLength(1);
+      });
+
+      it('gets one final message once the entered endsAt passes', async () => {
+        await syncWasher(20);
+        await service.tick(later(1199));
+        expect(washerFinals()).toHaveLength(0);
+        await service.tick(later(1200));
+        await service.tick(later(1500));
+        expect(washerFinals()).toHaveLength(1);
+        expect(washerFinals()[0][1]).toMatchObject({
+          kind: 'WASHER',
+          state: 'RUNNING',
+          endsAt: String(Math.floor(later(1200).getTime() / 1000)),
+        });
+      });
+
+      it('gets no final message without an entered time', async () => {
+        await syncWasher(null);
+        await service.tick(later(3600));
+        expect(sent()).toHaveLength(1);
+      });
+
+      it('gets another final message after the time is entered again', async () => {
+        await syncWasher(20);
+        await service.tick(later(1201));
+        expect(washerFinals()).toHaveLength(1);
+        await syncWasher(10, later(1210)); // now ends later(1810)
+        await service.tick(later(1500));
+        expect(washerFinals()).toHaveLength(1);
+        await service.tick(later(1810));
+        expect(washerFinals()).toHaveLength(2);
+      });
     });
 
     it('stops when the owner has no Live Update device, resumes on next sync', async () => {

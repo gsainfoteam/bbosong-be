@@ -40,6 +40,16 @@ export class GetUsingMachineResDto {
     nullable: true,
   })
   endedAt: Date | null;
+
+  @ApiProperty({
+    description:
+      'Estimated finish time entered by the operating user (washers only); null when not entered',
+    example: '2026-08-01T15:00:00.000Z',
+    nullable: true,
+    type: String,
+    format: 'date-time',
+  })
+  estimatedEndsAt: Date | null;
 }
 
 export class GetActiveUsingMachineResDto extends GetUsingMachineResDto {
@@ -70,6 +80,7 @@ export class GetActiveUsingMachineResDto extends GetUsingMachineResDto {
     this.notifyOnCompletion = usage.notifyOnCompletion;
     this.startedAt = usage.startedAt;
     this.endedAt = usage.endedAt;
+    this.estimatedEndsAt = usage.estimatedEndsAt;
     this.remainingMinutes = usage.thinqRemainingMinutes;
     this.thinqUpdatedAt = usage.thinqUpdatedAt;
   }

@@ -569,7 +569,10 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
       userUuid,
       machineUuid,
     );
-    if (count > 0) return;
+    if (count > 0) {
+      await this.syncWasherLiveUpdate(userUuid, machineUuid);
+      return;
+    }
 
     // Diagnose a failed conditional update using the latest usage record.
     const usingMachine = await this.getUsingMachine(machineUuid);
@@ -647,6 +650,64 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         `re-registration notification for machine ${machineUuid}`,
       );
     }
+    await this.syncWasherLiveUpdate(userUuid, machineUuid);
+  }
+
+  /**
+   * Records the remaining time the session owner read off a washer display.
+   * Stored as an absolute finish time from the server clock, so client clock
+   * skew does not matter. Display only: completion is still power-driven.
+   */
+  async setRemainingTime(
+    userUuid: string,
+    machineUuid: string,
+    userGender: Gender,
+    remainingMinutes: number,
+    now: Date = new Date(),
+  ): Promise<Date> {
+    const machine = await this.getMachineDetail(machineUuid, userGender);
+    if (machine.type !== MachineType.WASHER) {
+      throw new BadRequestException({
+        statusCode: HttpStatus.BAD_REQUEST,
+        error: 'Bad Request',
+        message: 'Remaining time can only be entered for washers.',
+        errorCode: 'REMAINING_TIME_NOT_SUPPORTED',
+      });
+    }
+
+    const estimatedEndsAt = new Date(now.getTime() + remainingMinutes * 60_000);
+    const updated = await this.usingMachineRepository.setEstimatedEndsAt(
+      userUuid,
+      machineUuid,
+      estimatedEndsAt,
+    );
+    if (!updated) {
+      const usingMachine = await this.getUsingMachine(machineUuid);
+      if (!usingMachine) {
+        throw new NotFoundException({
+          statusCode: HttpStatus.NOT_FOUND,
+          error: 'Not Found',
+          message: 'Machine is not running.',
+          errorCode: 'MACHINE_NOT_RUNNING',
+        });
+      }
+      throw new ForbiddenException(
+        'The machine is not being used by the current user.',
+      );
+    }
+
+    await this.dispatchNotification(
+      () =>
+        this.liveActivityService.syncRunning(
+          updated.uuid,
+          updated.userUuid,
+          { state: null, remainingMinutes },
+          now,
+        ),
+      `Live Activity update for machine ${machineUuid}`,
+    );
+    await this.syncWasherLiveUpdate(userUuid, machineUuid, now);
+    return estimatedEndsAt;
   }
 
   async disableMachineNotification(
@@ -885,6 +946,47 @@ export class MachineService implements OnModuleInit, OnModuleDestroy {
         ),
       `laundry room availability notification for machine ${machineUuid}`,
     );
+  }
+
+  /**
+   * Washers have no ThinQ polling that would announce the session, so the
+   * Android Live Update starts when a user registers (or enters the remaining
+   * time). Dryers are driven by the ThinQ sync instead.
+   */
+  private async syncWasherLiveUpdate(
+    userUuid: string,
+    machineUuid: string,
+    now: Date = new Date(),
+  ): Promise<void> {
+    await this.dispatchNotification(async () => {
+      const [machine, usage] = await Promise.all([
+        this.machineRepository.getMachine(machineUuid),
+        this.usingMachineRepository.getUsingMachineByMachineUuid(machineUuid),
+      ]);
+      if (
+        !machine ||
+        machine.type !== MachineType.WASHER ||
+        usage?.userUuid !== userUuid
+      ) {
+        return;
+      }
+      await this.liveUpdateService.syncRunning(
+        usage.uuid,
+        usage.userUuid,
+        buildLiveUpdateSession(machine, usage.startedAt),
+        {
+          state: 'RUNNING',
+          remainingMinutes: this.remainingMinutesOf(usage, now),
+        },
+        now,
+      );
+    }, `Live Update for washer ${machineUuid}`);
+  }
+
+  private remainingMinutesOf(usage: UsingMachine, now: Date): number | null {
+    if (!usage.estimatedEndsAt) return null;
+    const ms = usage.estimatedEndsAt.getTime() - now.getTime();
+    return ms > 0 ? Math.ceil(ms / 60_000) : null;
   }
 
   private async dispatchNotification(

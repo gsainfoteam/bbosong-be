@@ -1,5 +1,10 @@
 import { Loggable } from '@lib/logger';
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { LiveActivityRepository } from '@lib/database/repositories/live-activity.repository';
 import { LiveActivityEnvironment } from 'generated/prisma/client';
 import { formatError } from '../../common/utils/format-error.util';
@@ -17,10 +22,19 @@ const MIN_ENDS_AT_DRIFT_SECONDS = 120;
 /** Minimum spacing of progress updates when only the finish time moved. */
 const MIN_UPDATE_INTERVAL_MS = 60_000;
 
+/** How often sessions whose finish time has passed are looked for. */
+const OVERDUE_CHECK_INTERVAL_MS = 15_000;
+/** Total attempts (first + retries) of the one-off message sent at `endsAt`. */
+const MAX_OVERDUE_ATTEMPTS = 3;
+
 interface LastSent {
   state: LiveActivityContentState['state'];
   endsAt: number | null;
   sentAt: number;
+  ownerUuid: string | null;
+  /** The one-off message after `endsAt` is done (sent, given up, or not needed). */
+  overdueDone?: boolean;
+  overdueAttempts?: number;
 }
 
 interface ActivityToken {
@@ -31,15 +45,87 @@ interface ActivityToken {
 
 @Loggable()
 @Injectable()
-export class LiveActivityService {
+export class LiveActivityService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(LiveActivityService.name);
   /** Last progress update per session; lost on restart (one extra update). */
   private readonly lastSent = new Map<string, LastSent>();
+
+  private timer?: NodeJS.Timeout;
+  private checking?: Promise<void>;
 
   constructor(
     private readonly liveActivityRepository: LiveActivityRepository,
     private readonly apnsService: ApnsService,
   ) {}
+
+  onModuleInit(): void {
+    this.timer = setInterval(() => {
+      if (this.checking) return;
+      this.checking = this.pushOverdue()
+        .catch(() => undefined)
+        .finally(() => {
+          this.checking = undefined;
+        });
+    }, OVERDUE_CHECK_INTERVAL_MS);
+    this.timer.unref?.();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    clearInterval(this.timer);
+    await this.checking;
+  }
+
+  /**
+   * Once a session's finish time has passed while it still runs (washers may
+   * take longer than the entered time), pushes the same state with
+   * `remainingMinutes: 0` once so the widget redraws as "almost done" instead
+   * of counting below zero. Re-armed when the finish time moves ahead again.
+   */
+  async pushOverdue(now: Date = new Date()): Promise<void> {
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const due = [...this.lastSent.entries()].filter(
+      ([, entry]) =>
+        !entry.overdueDone &&
+        entry.endsAt !== null &&
+        entry.endsAt <= nowSeconds &&
+        (entry.state === 'RUNNING' || entry.state === 'COOLING'),
+    );
+    await Promise.all(
+      due.map(async ([usingMachineUuid, entry]) => {
+        // Claim first so overlapping checks do not double-send.
+        entry.overdueDone = true;
+        entry.overdueAttempts = (entry.overdueAttempts ?? 0) + 1;
+        const { owned } = this.splitByOwner(
+          await this.liveActivityRepository.getTokensByUsingMachine(
+            usingMachineUuid,
+          ),
+          entry.ownerUuid,
+        );
+        if (owned.length === 0) return;
+        const contentState: LiveActivityContentState = {
+          state: entry.state,
+          endsAt: entry.endsAt,
+          remainingMinutes: 0,
+          updatedAt: nowSeconds,
+        };
+        const results = await this.pushAndPrune(owned, (token) =>
+          this.apnsService.sendLiveActivityUpdate(
+            token,
+            contentState,
+            { highPriority: true },
+            now,
+          ),
+        );
+        if (
+          results.includes('failed') &&
+          entry.overdueAttempts < MAX_OVERDUE_ATTEMPTS &&
+          this.lastSent.get(usingMachineUuid) === entry
+        ) {
+          entry.overdueDone = false;
+        }
+      }),
+    );
+  }
 
   async registerToken(params: {
     userUuid: string;
@@ -110,6 +196,11 @@ export class LiveActivityService {
       state: contentState.state,
       endsAt: contentState.endsAt,
       sentAt: now.getTime(),
+      ownerUuid,
+      // A finish time already past when sent is shown as "almost done" by that very update.
+      overdueDone:
+        contentState.endsAt !== null &&
+        contentState.endsAt <= Math.floor(now.getTime() / 1000),
     };
     this.lastSent.set(usingMachineUuid, entry);
     const results = await this.pushAndPrune(owned, (token) =>

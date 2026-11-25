@@ -8,6 +8,7 @@ describe('GetActiveUsingMachineResDto', () => {
     notifyOnCompletion: true,
     startedAt: new Date('2026-08-01T14:23:11.000Z'),
     endedAt: null,
+    estimatedEndsAt: new Date('2026-08-01T15:00:00.000Z'),
   };
 
   it('exposes the machine ThinQ remaining minutes and update time', () => {

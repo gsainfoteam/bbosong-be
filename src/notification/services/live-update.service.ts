@@ -90,6 +90,8 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
   /**
    * Sends a tick for every dryer session whose finish time is known and whose
    * last message (transition, correction or tick) is at least one tick old.
+   * Washers (finish time entered by the user) only get the one-off message
+   * once `endsAt` has passed, since their cycle may run longer than entered.
    * Stops for a session when its owner has no Live Update device any more.
    */
   async tick(now: Date = new Date()): Promise<void> {
@@ -111,7 +113,6 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
     const finals = [...this.lastSent.entries()].filter(([, entry]) => {
       const { current } = entry;
       return (
-        entry.session.kind === MachineType.DRYER &&
         !entry.finalDone &&
         current.endsAt !== null &&
         current.endsAt <= nowSeconds &&
@@ -198,7 +199,7 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
     thinq: { state: string | null; remainingMinutes: number | null },
     now: Date = new Date(),
   ): Promise<void> {
-    if (!ownerUuid || session.kind !== MachineType.DRYER) return;
+    if (!ownerUuid) return;
     const contentState = buildRunningContentState(
       thinq.state,
       thinq.remainingMinutes,
