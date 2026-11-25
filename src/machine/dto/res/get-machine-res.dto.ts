@@ -43,11 +43,22 @@ export class MachineUsageInfoDto {
   })
   remainingMinutes: number | null;
 
+  @ApiProperty({
+    description:
+      'Estimated finish time entered by the operating user (washers only); null when not entered',
+    example: '2026-08-01T15:00:00.000Z',
+    nullable: true,
+    type: String,
+    format: 'date-time',
+  })
+  estimatedEndsAt: Date | null;
+
   constructor(usage: UsingMachine, remainingMinutes: number | null) {
     this.uuid = usage.uuid;
     this.userUuid = usage.userUuid;
     this.notifyOnCompletion = usage.notifyOnCompletion;
     this.startedAt = usage.startedAt;
+    this.estimatedEndsAt = usage.estimatedEndsAt;
     this.remainingMinutes = remainingMinutes;
   }
 }

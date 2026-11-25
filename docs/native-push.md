@@ -107,6 +107,7 @@ FCM에서는 `notification`(title/body) + data map으로 전달하며 data 값�
 | 시점 | 이벤트 | 비고 |
 | --- | --- | --- |
 | ThinQ 건조기 진행 중 상태/남은 시간 변경 | `update` | 상태가 바뀌면 즉시(priority 10), 종료 예상 시각이 2분 이상 어긋났을 때만(priority 5, 세션당 60초 간격 제한). 전송이 실패하면 다음 동기화에서 같은 내용을 다시 보낸다. 카운트다운 자체는 앱이 `Text(timerInterval:)`로 그린다 |
+| `RUNNING`/`COOLING` 세션의 `endsAt`이 지났는데 아직 끝나지 않음(15초 확인 주기) | `update` (priority 10) | 같은 `state`, `endsAt` 그대로, `remainingMinutes: 0`, `updatedAt`=현재를 세션당 1회. 위젯이 "곧 끝나요"로 다시 그린다(세탁기는 입력한 시간보다 오래 돌 수 있다). 일부 기기 전송 실패 시 최대 3회(첫 발송 포함). `endsAt`이 미래로 늘어나면 다시 대기한다 |
 | 세션 종료(`finishUsingMachine`) | `update` (`state: END`) | **`end`를 보내지 않는다.** 완료 후에도 Dynamic Island/잠금화면에 남는다. 토큰도 유지. `notifyOnCompletion`과 무관 |
 | 다른 사용자가 완료 확인 후 같은 기계를 재등록 | `update` (`state: END`) | 이전 사용자는 여전히 수거해야 하므로 `end`를 보내지 않고 "완료"로 남긴다. 같은 기계에 새 세션이 시작돼도 이전 사용자의 activity에는 아무것도 보내지 않는다 |
 | 사용자가 `DELETE /machine/:uuid/register`로 기계 추적을 해제 | `end` | 그 사용자의 해당 기계 activity(진행 중·완료 상태 모두)를 즉시 제거하고 토큰 삭제. 진행 중 세션이 없어 404를 반환하는 경우에도 정리한다. APNs 전송이 실패한 토큰은 남겨 두었다가, 이후 세션의 update/완료 시점에 `end`만 다시 시도한다(일반 update는 보내지 않는다) |
@@ -178,13 +179,15 @@ Android 16 Live Update(`Notification.ProgressStyle`)는 서버 `notification` �
 | 사용자가 `DELETE /machine/:uuid/register`로 추적 해제 | 그 사용자에게 `END` |
 
 마무리 메시지 규칙:
-- 대상은 `endsAt`을 아는 `RUNNING`/`COOLING` 건조기뿐이다. 세탁기, `endsAt`을 모르는 상태(`DETECTING` 등), `PAUSE`, `END`/`ERROR`는 제외한다. 이후에는 tick을 보내지 않고, `END`/`ERROR`는 기존처럼 종료 처리한다.
+- 대상은 `endsAt`을 아는 `RUNNING`/`COOLING` 세션이다. 건조기는 ThinQ의 `endsAt`, 세탁기는 사용자가 입력한 남은 시간(`estimatedEndsAt`)이 있을 때만 해당한다(세탁기는 입력한 시간보다 오래 돌 수 있다). `endsAt`을 모르는 상태(`DETECTING` 등), `PAUSE`, `END`/`ERROR`는 제외한다. 이후에는 tick을 보내지 않고, `END`/`ERROR`는 기존처럼 종료 처리한다.
 - **이미 지난 `endsAt`으로 새로 기록되는 세션(등록·상태 전이·보정 시점에 `endsAt <= 현재`)에는 마무리 메시지를 따로 보내지 않는다.** 그 시점에 나가는 전이/보정 메시지가 이미 지난 `endsAt`을 담고 있어 앱이 "곧 끝나요"로 그리기 때문이다.
 - ThinQ 동기화로 `endsAt`이 미래로 늘어나면 마무리 상태가 리셋되어 일반 tick이 다시 동작하고, 새 `endsAt`에 도달하면 마무리 메시지를 다시 한 번 보낸다. 늘어난 `endsAt`은 기존 보정 규칙(2분 이상 어긋남, 60초 간격 제한)으로 앱에 전달된다. 2분 미만 연장은 보정 대상이 아니지만 다음 tick이 최신 `endsAt`을 담아 보낸다.
 - 일부 기기 전송 실패 시 tick 간격마다 재시도하며 최대 3회(첫 발송 포함)에서 포기한다. 무효 토큰 정리는 기존 `deliver()` 경로다. owner의 Live Update 기기가 없으면 세션 추적을 멈춘다.
 - `LIVE_UPDATE_TICK_INTERVAL_SECONDS=0`(tick 비활성화)이면 마무리 메시지도 보내지 않는다.
 
-tick은 `endsAt`을 모르는 상태(`DETECTING` 등), `END`/`ERROR`, 세탁기, `endsAt`이 지난 세션에는 보내지 않는다. 세션 종료·추적 해제·owner 변경(이전 owner)이면 중단하고, owner의 Live Update 기기가 하나도 없으면(구독 해제/`supportsLiveUpdate=false`) 그 세션의 tick을 멈춘다(다음 ThinQ 동기화에서 다시 등록).
+tick은 `endsAt`을 모르는 상태(`DETECTING` 등), `END`/`ERROR`, 세탁기(세탁기는 진행·마무리 메시지만 받는다), `endsAt`이 지난 세션에는 보내지 않는다. 세션 종료·추적 해제·owner 변경(이전 owner)이면 중단하고, owner의 Live Update 기기가 하나도 없으면(구독 해제/`supportsLiveUpdate=false`) 그 세션의 tick을 멈춘다(다음 ThinQ 동기화에서 다시 등록).
+
+세탁기는 ThinQ 동기화로 다시 등록되지 않으므로, 첫 전송이 일부 기기에 닿지 않으면 세션을 유지한 채 tick마다(최대 3회) 다시 보낸다. 사용자가 입력한 남은 시간 변경은 2분 미만이거나 직전 전송 후 60초 안이어도 바로 보내며(`force`), `endsAt`이 이미 지난 세션을 재등록하면 `remainingMinutes: 0`을 유지한다.
 
 ### tick 설정
 

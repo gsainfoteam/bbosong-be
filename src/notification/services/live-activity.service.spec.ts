@@ -222,6 +222,153 @@ describe('LiveActivityService', () => {
     });
   });
 
+  describe('pushOverdue', () => {
+    const at = (offsetMs: number) => new Date(now.getTime() + offsetMs);
+    const running = (remainingMinutes: number | null) => ({
+      state: 'RUNNING',
+      remainingMinutes,
+    });
+
+    it('pushes once after the finish time passed, with 0 minutes left', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(20), now);
+      apns.sendLiveActivityUpdate.mockClear();
+
+      await service.pushOverdue(at(20 * 60_000 - 1000));
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+
+      await service.pushOverdue(at(20 * 60_000));
+      await service.pushOverdue(at(25 * 60_000));
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledWith(
+        tokens[0],
+        {
+          state: 'RUNNING',
+          endsAt: seconds + 20 * 60,
+          remainingMinutes: 0,
+          updatedAt: seconds + 20 * 60,
+        },
+        { highPriority: true },
+        at(20 * 60_000),
+      );
+    });
+
+    it('does nothing without a finish time', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(null), now);
+      apns.sendLiveActivityUpdate.mockClear();
+      await service.pushOverdue(at(3600_000));
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+    });
+
+    it('is armed again when the finish time moves ahead', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(20), now);
+      await service.pushOverdue(at(21 * 60_000));
+      apns.sendLiveActivityUpdate.mockClear();
+
+      // Time entered again: 10 more minutes from 21 minutes in.
+      await service.syncRunning(
+        'usage-1',
+        'user-1',
+        running(10),
+        at(21 * 60_000),
+      );
+      apns.sendLiveActivityUpdate.mockClear();
+      await service.pushOverdue(at(30 * 60_000));
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+      await service.pushOverdue(at(31 * 60_000));
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries a failed device a limited number of times', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(20), now);
+      apns.sendLiveActivityUpdate.mockClear();
+      apns.sendLiveActivityUpdate.mockResolvedValue('failed');
+      for (let i = 0; i < 6; i++) {
+        await service.pushOverdue(at(21 * 60_000 + i * 15_000));
+      }
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(3 * 2);
+    });
+
+    it('is re-armed by a small extension that is not worth a push', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(20), now);
+      await service.pushOverdue(at(20 * 60_000));
+      apns.sendLiveActivityUpdate.mockClear();
+
+      // 1 more minute (below the 2 minute drift): nothing is pushed, but it is tracked.
+      await service.syncRunning(
+        'usage-1',
+        'user-1',
+        running(1),
+        at(20 * 60_000 + 1000),
+      );
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+      await service.pushOverdue(at(21 * 60_000 + 1000));
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledWith(
+        tokens[0],
+        expect.objectContaining({
+          endsAt: seconds + 20 * 60 + 1 + 60,
+          remainingMinutes: 0,
+        }),
+        { highPriority: true },
+        at(21 * 60_000 + 1000),
+      );
+    });
+
+    it('uses the latest finish time when a recent change was throttled', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
+      apns.sendLiveActivityUpdate.mockClear();
+      // Changed 30 s later: throttled, but the overdue time must follow it.
+      await service.syncRunning('usage-1', 'user-1', running(40), at(30_000));
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+      await service.pushOverdue(at(30 * 60_000 + 1000));
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+    });
+
+    it('pushes a forced (user-entered) change despite the throttle and drift limits', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(30), now);
+      apns.sendLiveActivityUpdate.mockClear();
+      await service.syncRunning('usage-1', 'user-1', running(29), at(10_000), {
+        force: true,
+      });
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+    });
+
+    it('drops a sync that was overtaken while looking up tokens', async () => {
+      let release!: (value: typeof tokens) => void;
+      repository.getTokensByUsingMachine.mockReturnValueOnce(
+        new Promise<typeof tokens>((resolve) => (release = resolve)),
+      );
+      const older = service.syncRunning('usage-1', 'user-1', running(25), now);
+      // The newer sync (40 min) finishes first.
+      await service.syncRunning('usage-1', 'user-1', running(40), at(1000));
+      release(tokens);
+      await older;
+
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2); // newer only
+      await service.pushOverdue(at(30 * 60_000));
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+    });
+
+    it('tries again after the token lookup failed', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(20), now);
+      apns.sendLiveActivityUpdate.mockClear();
+      repository.getTokensByUsingMachine.mockRejectedValueOnce(new Error('db'));
+
+      await service.pushOverdue(at(20 * 60_000));
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+      await service.pushOverdue(at(20 * 60_000 + 15_000));
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops after the session completed', async () => {
+      await service.syncRunning('usage-1', 'user-1', running(20), now);
+      await service.completeForUsingMachine('usage-1', 'user-1', now);
+      apns.sendLiveActivityUpdate.mockClear();
+      await service.pushOverdue(at(25 * 60_000));
+      expect(apns.sendLiveActivityUpdate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('syncRunning', () => {
     const at = (offsetMs: number) => new Date(now.getTime() + offsetMs);
     const running = (remainingMinutes: number | null, state = 'RUNNING') => ({

@@ -269,20 +269,104 @@ describe('LiveUpdateService', () => {
       expect(sent()).toHaveLength(1);
     });
 
-    it('does not track washers', async () => {
+    describe('washers', () => {
       const washer = buildLiveUpdateSession(
         { uuid: 'machine-2', type: 'WASHER', location: 'A', index: 1 },
         null,
       );
-      await service.syncRunning(
-        'session-2',
-        'user-1',
-        washer,
-        { state: 'RUNNING', remainingMinutes: 20 },
-        now,
-      );
-      await service.tick(later(600));
-      expect(sent()).toHaveLength(0);
+      const syncWasher = (remainingMinutes: number | null, at: Date = now) =>
+        service.syncRunning(
+          'session-2',
+          'user-1',
+          washer,
+          { state: 'RUNNING', remainingMinutes },
+          at,
+        );
+      const washerFinals = () =>
+        sent().filter(([, d]) => d.remainingMinutes === '0');
+
+      it('never gets regular ticks', async () => {
+        await syncWasher(20);
+        await service.tick(later(600));
+        expect(sent()).toHaveLength(1);
+      });
+
+      it('gets one final message once the entered endsAt passes', async () => {
+        await syncWasher(20);
+        await service.tick(later(1199));
+        expect(washerFinals()).toHaveLength(0);
+        await service.tick(later(1200));
+        await service.tick(later(1500));
+        expect(washerFinals()).toHaveLength(1);
+        expect(washerFinals()[0][1]).toMatchObject({
+          kind: 'WASHER',
+          state: 'RUNNING',
+          endsAt: String(Math.floor(later(1200).getTime() / 1000)),
+        });
+      });
+
+      it('gets no final message without an entered time', async () => {
+        await syncWasher(null);
+        await service.tick(later(3600));
+        expect(sent()).toHaveLength(1);
+      });
+
+      it('retries a failed first send on the tick and still sends the final', async () => {
+        fcmService.sendLiveUpdateToUser.mockResolvedValueOnce({
+          sent: 1,
+          failed: 1,
+        });
+        await syncWasher(20);
+        expect(sent()).toHaveLength(1);
+
+        await service.tick(later(180));
+        expect(sent()).toHaveLength(2); // retried, not dropped
+        await service.tick(later(360));
+        expect(sent()).toHaveLength(2); // delivered: no more retries
+
+        await service.tick(later(1200));
+        expect(washerFinals()).toHaveLength(1);
+      });
+
+      it('keeps retrying while a retry only reached some devices', async () => {
+        fcmService.sendLiveUpdateToUser
+          .mockResolvedValueOnce({ sent: 1, failed: 1 })
+          .mockResolvedValueOnce({ sent: 1, failed: 1 });
+        await syncWasher(null);
+        await service.tick(later(180)); // partial again
+        await service.tick(later(360)); // delivered everywhere
+        await service.tick(later(540));
+        expect(sent()).toHaveLength(3);
+      });
+
+      it('sends a user-entered change right away, even a small or recent one', async () => {
+        await syncWasher(20);
+        await service.tick(later(1201));
+        expect(washerFinals()).toHaveLength(1);
+        // 1 minute more, 1 second after the final: below the 2 minute drift and the 60 s spacing.
+        await service.syncRunning(
+          'session-2',
+          'user-1',
+          washer,
+          { state: 'RUNNING', remainingMinutes: 1 },
+          later(1202),
+          { force: true },
+        );
+        expect(sent().at(-1)![1]).toMatchObject({ remainingMinutes: '1' });
+        await service.tick(later(1202 + 60));
+        expect(washerFinals()).toHaveLength(2);
+      });
+
+      it('gets another final message after the time is entered again', async () => {
+        await syncWasher(20);
+        await service.tick(later(1201));
+        expect(washerFinals()).toHaveLength(1);
+        await syncWasher(10, later(1210)); // now ends later(1810)
+        await service.tick(later(1500));
+        expect(washerFinals()).toHaveLength(1);
+        await service.tick(later(1810));
+        expect(washerFinals()).toHaveLength(2);
+      });
     });
 
     it('stops when the owner has no Live Update device, resumes on next sync', async () => {

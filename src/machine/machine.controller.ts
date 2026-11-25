@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -57,6 +58,8 @@ import {
   GetUsingMachineResDto,
 } from './dto/res/get-using-machine-res.dto';
 import { ToggleNotificationReqDto } from './dto/req/toggle-notification-req.dto';
+import { SetRemainingTimeReqDto } from './dto/req/set-remaining-time-req.dto';
+import { SetRemainingTimeResDto } from './dto/res/set-remaining-time-res.dto';
 import { RegisterLiveActivityReqDto } from './dto/req/register-live-activity-req.dto';
 import { UnregisterLiveActivityReqDto } from './dto/req/unregister-live-activity-req.dto';
 import { SuccessResDto } from '../common/dto/res/success-res.dto';
@@ -524,6 +527,43 @@ export class MachineController {
       );
     }
     return { success: true };
+  }
+
+  @Put('/:uuid/remaining-time')
+  @ApiOperation({
+    summary: 'Set remaining time of a running washer',
+    description:
+      'The user operating a washer enters the remaining minutes shown on its display (washers have no ThinQ timer, and the display only shows it some time after the cycle starts). The server stores estimatedEndsAt = server now + remainingMinutes on the open session and updates the Live Activity. Can be called again to correct the value. Display only; completion is still detected from power.',
+  })
+  @ApiBearerAuth('user')
+  @UseGuards(UserGuard)
+  @ApiBody({ type: SetRemainingTimeReqDto })
+  @ApiOkResponse({ type: SetRemainingTimeResDto })
+  @ApiBadRequestResponse({
+    description:
+      'Invalid remainingMinutes (integer 1-180), or the machine is not a washer (REMAINING_TIME_NOT_SUPPORTED).',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Machine gender does not match user gender, or the session is operated by another user.',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Machine not found, or machine is not running (MACHINE_NOT_RUNNING).',
+  })
+  @ApiUnauthorizedResponse({ description: 'Unauthorized.' })
+  async setRemainingTime(
+    @Param('uuid', ParseUUIDPipe) machineUuid: string,
+    @GetUser() user: User,
+    @Body() body: SetRemainingTimeReqDto,
+  ): Promise<SetRemainingTimeResDto> {
+    const estimatedEndsAt = await this.machineService.setRemainingTime(
+      user.uuid,
+      machineUuid,
+      user.gender,
+      body.remainingMinutes,
+    );
+    return { estimatedEndsAt };
   }
 
   @Post('/:uuid/live-activity')
