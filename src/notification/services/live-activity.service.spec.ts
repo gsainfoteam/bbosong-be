@@ -333,6 +333,22 @@ describe('LiveActivityService', () => {
       expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
     });
 
+    it('drops a sync that was overtaken while looking up tokens', async () => {
+      let release!: (value: typeof tokens) => void;
+      repository.getTokensByUsingMachine.mockReturnValueOnce(
+        new Promise<typeof tokens>((resolve) => (release = resolve)),
+      );
+      const older = service.syncRunning('usage-1', 'user-1', running(25), now);
+      // The newer sync (40 min) finishes first.
+      await service.syncRunning('usage-1', 'user-1', running(40), at(1000));
+      release(tokens);
+      await older;
+
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2); // newer only
+      await service.pushOverdue(at(30 * 60_000));
+      expect(apns.sendLiveActivityUpdate).toHaveBeenCalledTimes(2);
+    });
+
     it('tries again after the token lookup failed', async () => {
       await service.syncRunning('usage-1', 'user-1', running(20), now);
       apns.sendLiveActivityUpdate.mockClear();

@@ -328,6 +328,17 @@ describe('LiveUpdateService', () => {
         expect(washerFinals()).toHaveLength(1);
       });
 
+      it('keeps retrying while a retry only reached some devices', async () => {
+        fcmService.sendLiveUpdateToUser
+          .mockResolvedValueOnce({ sent: 1, failed: 1 })
+          .mockResolvedValueOnce({ sent: 1, failed: 1 });
+        await syncWasher(null);
+        await service.tick(later(180)); // partial again
+        await service.tick(later(360)); // delivered everywhere
+        await service.tick(later(540));
+        expect(sent()).toHaveLength(3);
+      });
+
       it('sends a user-entered change right away, even a small or recent one', async () => {
         await syncWasher(20);
         await service.tick(later(1201));

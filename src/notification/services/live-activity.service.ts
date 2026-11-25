@@ -51,6 +51,8 @@ export class LiveActivityService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(LiveActivityService.name);
   /** Last progress update per session; lost on restart (one extra update). */
   private readonly lastSent = new Map<string, LastSent>();
+  /** Latest `syncRunning` call per session, to drop calls overtaken while awaiting. */
+  private readonly syncSeq = new Map<string, number>();
 
   private timer?: NodeJS.Timeout;
   private checking?: Promise<void>;
@@ -177,6 +179,8 @@ export class LiveActivityService implements OnModuleInit, OnModuleDestroy {
       thinq.remainingMinutes,
       now,
     );
+    const seq = (this.syncSeq.get(usingMachineUuid) ?? 0) + 1;
+    this.syncSeq.set(usingMachineUuid, seq);
     const previous = this.lastSent.get(usingMachineUuid);
     if (previous) {
       // Track the newest finish time even when nothing is sent below, so the
@@ -219,6 +223,9 @@ export class LiveActivityService implements OnModuleInit, OnModuleDestroy {
     );
     // Tokens of users no longer tracking the session only get the end again.
     await this.endAndForget(orphaned, now);
+    // A newer sync (or the end of the session) overtook this one while it
+    // waited: it must not record or send an outdated finish time.
+    if (this.syncSeq.get(usingMachineUuid) !== seq) return;
     if (owned.length === 0) return;
 
     // Record before sending so concurrent events do not double-send.
@@ -262,6 +269,7 @@ export class LiveActivityService implements OnModuleInit, OnModuleDestroy {
     now: Date = new Date(),
   ): Promise<void> {
     this.lastSent.delete(usingMachineUuid);
+    this.syncSeq.delete(usingMachineUuid);
     const { owned, orphaned } = this.splitByOwner(
       await this.liveActivityRepository.getTokensByUsingMachine(
         usingMachineUuid,
@@ -304,6 +312,7 @@ export class LiveActivityService implements OnModuleInit, OnModuleDestroy {
     now: Date = new Date(),
   ): Promise<void> {
     this.lastSent.delete(usingMachineUuid);
+    this.syncSeq.delete(usingMachineUuid);
     const tokens =
       await this.liveActivityRepository.getTokensByUsingMachine(
         usingMachineUuid,

@@ -192,12 +192,10 @@ export class LiveUpdateService implements OnModuleInit, OnModuleDestroy {
       }),
     );
     if (this.lastSent.get(key) !== entry) return;
-    if (sent > 0) {
-      entry.sentAt = nowMs;
-      entry.retryTransition = false;
-    } else if (failed === 0) {
-      this.lastSent.delete(key);
-    }
+    if (sent > 0) entry.sentAt = nowMs;
+    // Keep retrying (up to the attempt limit) while any device was missed.
+    entry.retryTransition = failed > 0;
+    if (sent === 0 && failed === 0) this.lastSent.delete(key);
   }
 
   /**
